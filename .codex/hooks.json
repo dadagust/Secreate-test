@@ -1,0 +1,31 @@
+{
+  "description": "Codex hooks: the same guard and context recovery scripts as .claude/settings.json. Codex runs a hook in the session shell and directory, so the path is relative to the repository root (git rev-parse --show-cdup prints it in ASCII, which Windows PowerShell 5.1 does not garble); on Windows the shell is PowerShell, which keeps the exit code only through exit $LASTEXITCODE.",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "^Bash$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-cdup).claude/hooks/guard-commands.mjs\"",
+            "commandWindows": "node \"$(git rev-parse --show-cdup).claude/hooks/guard-commands.mjs\"; exit $LASTEXITCODE",
+            "timeout": 30
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "^(compact|resume)$",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$(git rev-parse --show-cdup).claude/hooks/context-recovery.mjs\"",
+            "commandWindows": "node \"$(git rev-parse --show-cdup).claude/hooks/context-recovery.mjs\"; exit $LASTEXITCODE",
+            "timeout": 30
+          }
+        ]
+      }
+    ]
+  }
+}

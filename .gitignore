@@ -1,0 +1,45 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Django
+backend/.venv/
+backend/db.sqlite3
+backend/test.sqlite3
+backend/media/
+backend/staticfiles/
+
+# Frontend
+frontend/.next/
+frontend/node_modules/
+frontend/out/
+frontend/.env*.local
+
+# Local env
+.env
+.env.local
+.env.*.local
+.DS_Store
+Thumbs.db
+
+# Agent layer tooling (root package.json)
+/node_modules/
+docs/.vitepress/cache/
+docs/.vitepress/dist/
+
+# Personal coding-agent settings
+.claude/settings.local.json
+.claude/worktrees/
+
+# Working state of the active unfinished task (see AGENTS.md)
+
+/.idea
+
+# Java and Vite
+**/target/
+frontend/dist/

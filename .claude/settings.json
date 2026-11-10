@@ -1,0 +1,88 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(npm run check)",
+      "Bash(npm run check:agents)",
+      "Bash(npm run test:tools)",
+      "Bash(npm run skills:sync)",
+      "Bash(npm run skills:check)",
+      "Bash(npm run overview:check)",
+      "Bash(npm run docs:build)",
+      "Bash(npm run backlog -- task list *)",
+      "Bash(npm run backlog -- task view *)",
+      "Bash(npm run backlog -- search *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ],
+    "deny": [
+      "Bash(git push)",
+      "Bash(git push *)",
+      "Bash(git reset --hard)",
+      "Bash(git reset --hard *)",
+      "Bash(git clean *)",
+      "Bash(git commit --no-verify *)",
+      "Bash(git commit -n *)",
+      "Bash(git commit --amend *)",
+      "Bash(git stash)",
+      "Bash(git switch *)",
+      "Bash(docker compose down *)",
+      "Read(.env)",
+      "Read(.env.local)",
+      "Read(.env.*.local)",
+      "Read(.env.development)",
+      "Read(.env.production)",
+      "Read(.env.test)",
+      "Edit(./PROJECT_OVERVIEW.html)",
+      "Edit(./frontend/package-lock.json)",
+      "Edit(./package-lock.json)",
+      "Edit(./.claude/skills/**)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Bash|PowerShell",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/guard-commands.mjs"
+            ]
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-recovery.mjs"
+            ]
+          }
+        ]
+      },
+      {
+        "matcher": "resume",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node",
+            "args": [
+              "${CLAUDE_PROJECT_DIR}/.claude/hooks/context-recovery.mjs"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

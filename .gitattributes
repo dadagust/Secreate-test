@@ -1,0 +1,22 @@
+# LF only for the agent layer: the skills sync compares files byte for byte, and
+# core.autocrlf=true on Windows would check them out with CRLF. Application code keeps
+# the line endings Git gives it today.
+AGENTS.md text eol=lf
+CLAUDE.md text eol=lf
+/PROGRESS.md text eol=lf
+/PROJECT_OVERVIEW.md text eol=lf
+/PROJECT_OVERVIEW.html text eol=lf
+/skills-lock.json text eol=lf
+/package.json text eol=lf
+/package-lock.json text eol=lf
+/lefthook.yml text eol=lf
+/.gitattributes text eol=lf
+/.mcp.json text eol=lf
+.agents/** text eol=lf
+.claude/** text eol=lf
+.codex/** text eol=lf
+.serena/** text eol=lf
+backlog/** text eol=lf
+docs/** text eol=lf
+prompts/** text eol=lf
+scripts/** text eol=lf

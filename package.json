@@ -1,0 +1,27 @@
+{
+  "name": "secreate-agent-tooling",
+  "private": true,
+  "description": "Local agent tooling",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "backlog": "backlog",
+    "test:tools": "node --test .claude/hooks/guard-commands.test.mjs .claude/hooks/codex-hooks.test.mjs scripts/agent-instructions.test.mjs",
+    "skills:sync": "node scripts/sync-agent-skills.mjs",
+    "skills:check": "node scripts/sync-agent-skills.mjs --check",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs",
+    "overview:build": "node scripts/generate-project-overview.mjs",
+    "overview:check": "node scripts/generate-project-overview.mjs --check",
+    "check:agents": "npm run test:tools && npm run skills:check && npm run overview:check && npm run docs:build",
+    "check": "npm run check:agents"
+  },
+  "devDependencies": {
+    "backlog.md": "1.52.0",
+    "lefthook": "2.1.14",
+    "vitepress": "2.0.0-alpha.20"
+  }
+}
