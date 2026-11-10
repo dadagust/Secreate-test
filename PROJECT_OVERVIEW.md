@@ -1,10 +1,10 @@
 # Обзор проекта
 
-Репозиторий содержит агентскую инфраструктуру и заготовки документации. Продуктовое приложение отсутствует, бэклог пуст.
+Репозиторий содержит агентскую инфраструктуру, Spring Boot API и React/Vite интерфейс реестра, доставки и операторской сверки. TASK-001 завершена; нагрузочный профиль NF08 и финальная сверка описаны в [отчёте](docs/project/performance.md).
 
 ## Целевой стек
 
-Java и Spring Boot, React и TypeScript с Vite, PostgreSQL. Maven Wrapper и Docker Compose будут добавлены вместе с приложением.
+Java 21 и Spring Boot с Maven Wrapper в backend/, React и TypeScript с Vite в frontend/, PostgreSQL через Docker Compose.
 
 ## Расположение
 

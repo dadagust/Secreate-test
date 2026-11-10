@@ -1,0 +1,12 @@
+FROM eclipse-temurin:21-jre AS backend
+WORKDIR /app
+COPY backend/target/exchange-0.0.1-SNAPSHOT.jar /app/exchange.jar
+ENV JAVA_TOOL_OPTIONS="-Xms256m -Xmx900m -XX:ActiveProcessorCount=1"
+ENTRYPOINT ["java", "-jar", "/app/exchange.jar"]
+
+FROM eclipse-temurin:21-jre AS emulator
+WORKDIR /app
+COPY backend/target/classes /app/classes
+COPY backend/target/dependency /app/lib
+ENV JAVA_TOOL_OPTIONS="-Xms64m -Xmx384m -XX:ActiveProcessorCount=1"
+ENTRYPOINT ["java", "-cp", "/app/classes:/app/lib/*", "ru.secreate.exchange.emulator.EmulatorMain", "9090"]

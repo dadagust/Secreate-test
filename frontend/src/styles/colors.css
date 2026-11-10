@@ -1,0 +1,6 @@
+:root {
+  --color-background: #f5f7fa; --color-surface: #fff; --color-text: #172033; --color-muted: #475569;
+  --color-border: #cbd5e1; --color-accent: #1d4ed8; --color-accent-soft: #eff6ff;
+  --color-success: #166534; --color-success-bg: #f0fdf4; --color-danger: #991b1b; --color-danger-bg: #fef2f2;
+  --shadow: 0 2px 8px rgb(23 32 51 / 5%);
+}

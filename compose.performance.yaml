@@ -1,0 +1,45 @@
+services:
+  postgres:
+    cpus: "0.2"
+    mem_limit: 1536m
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.performance
+      target: backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/exchange
+      SPRING_DATASOURCE_USERNAME: exchange
+      SPRING_DATASOURCE_PASSWORD: local-demo-only
+      EXCHANGE_EXECUTOR: http://emulator:9090
+      EXCHANGE_WORKER_FIXED_DELAY_MS: 50
+      JAVA_TOOL_OPTIONS: -Xms256m -Xmx1200m -XX:ActiveProcessorCount=2
+    ports:
+      - "127.0.0.1:${NF08_API_PUBLISHED_PORT:-18080}:8080"
+    cpus: "1.7"
+    mem_limit: 2304m
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emulator:
+        condition: service_started
+
+  emulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.performance
+      target: emulator
+    environment:
+      EXECUTOR_DB_URL: jdbc:postgresql://postgres:5432/exchange
+      EXECUTOR_DB_USER: exchange
+      EXECUTOR_DB_PASSWORD: local-demo-only
+      EXECUTOR_BIND_ADDRESS: 0.0.0.0
+      JAVA_TOOL_OPTIONS: -Xms32m -Xmx160m -XX:ActiveProcessorCount=1
+    ports:
+      - "127.0.0.1:${NF08_EMULATOR_PUBLISHED_PORT:-19090}:9090"
+    cpus: "0.1"
+    mem_limit: 256m
+    depends_on:
+      postgres:
+        condition: service_healthy

@@ -1,0 +1,4 @@
+:root {
+  --font-family: system-ui, sans-serif; --font-body: 14px; --line-body: 20px; --font-title: 28px; --font-heading: 18px;
+  --font-weight-normal: 400; --font-weight-medium: 600; --font-weight-bold: 700;
+}

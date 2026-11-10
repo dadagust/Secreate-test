@@ -1,0 +1,12 @@
+.surface { background: var(--color-surface); border: var(--border-width) solid var(--color-border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.muted { color: var(--color-muted); } .brand { font-weight: var(--font-weight-bold); color: var(--color-accent); }
+.button { min-height: var(--control-height); padding: var(--space-2) var(--space-4); background: var(--color-surface); color: var(--color-text); border: var(--border-width) solid var(--color-border); border-radius: var(--radius); font-weight: var(--font-weight-medium); }
+.button--primary { background: var(--color-accent); border-color: var(--color-accent); color: var(--color-surface); }
+.button--selected { color: var(--color-accent); border-color: var(--color-accent); background: var(--color-accent-soft); }
+.link-button { border: 0; background: transparent; padding: 0; color: var(--color-accent); font-weight: var(--font-weight-medium); text-align: left; text-decoration: underline; }
+.status { display: inline-block; border-radius: var(--radius); padding: var(--space-1) var(--space-2); font-weight: var(--font-weight-medium); background: var(--color-background); color: var(--color-muted); }
+.status--success { background: var(--color-success-bg); color: var(--color-success); } .status--danger { background: var(--color-danger-bg); color: var(--color-danger); }
+.notice { padding: var(--space-4); border-radius: var(--radius); } .notice--error { background: var(--color-danger-bg); color: var(--color-danger); border: var(--border-width) solid var(--color-danger); }
+.empty { padding: var(--space-8); text-align: center; color: var(--color-muted); }
+.stack { display: grid; gap: var(--space-3); } .row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.record-list { list-style: none; margin: var(--space-3) 0 0; padding: 0; display: grid; gap: var(--space-3); } .record-list li { padding: var(--space-3); border: var(--border-width) solid var(--color-border); border-radius: var(--radius); overflow-wrap: anywhere; } .record-list p { margin: var(--space-2) 0; }
