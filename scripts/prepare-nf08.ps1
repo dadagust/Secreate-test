@@ -1,4 +1,4 @@
-param(
+﻿param(
     [Parameter(Mandatory = $true)][ValidatePattern('^nf08-[a-z0-9-]+$')][string]$ProjectName,
     [string]$OutputPath = ""
 )

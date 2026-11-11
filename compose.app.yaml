@@ -1,0 +1,91 @@
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: exchange
+      POSTGRES_USER: exchange
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-only}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U exchange -d exchange"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  emulator:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      target: emulator
+    environment:
+      EXECUTOR_DB_URL: jdbc:postgresql://postgres:5432/exchange
+      EXECUTOR_DB_USER: exchange
+      EXECUTOR_DB_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-only}
+      EXECUTOR_BIND_ADDRESS: 0.0.0.0
+    ports:
+      - "127.0.0.1:${APP_EMULATOR_PORT:-9090}:9090"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9090/fault-modes"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      target: backend
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/exchange
+      SPRING_DATASOURCE_USERNAME: exchange
+      SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD:-local-demo-only}
+      EXCHANGE_EXECUTOR: http://emulator:9090
+      EXCHANGE_WORKER_FIXED_DELAY_MS: ${EXCHANGE_WORKER_FIXED_DELAY_MS:-1000}
+      EXCHANGE_WORKER_MAX_ITEMS_PER_TICK: ${EXCHANGE_WORKER_MAX_ITEMS_PER_TICK:-16}
+    ports:
+      - "127.0.0.1:${APP_API_PORT:-8080}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      emulator:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "-u", "alice:demo-alice", "http://127.0.0.1:8080/api/tasks?page=0"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 30s
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      target: frontend
+    ports:
+      - "127.0.0.1:${APP_FRONTEND_PORT:-5173}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+  seed:
+    profiles: ["seed"]
+    build:
+      context: .
+      dockerfile: Dockerfile.app
+      target: seed
+    environment:
+      DEMO_API_URL: http://backend:8080
+      DEMO_EMULATOR_URL: http://emulator:9090
+      DEMO_SEED_INTERRUPT_AFTER: ${DEMO_SEED_INTERRUPT_AFTER:-}
+    depends_on:
+      backend:
+        condition: service_healthy
+      emulator:
+        condition: service_healthy
+volumes:
+  postgres_data:

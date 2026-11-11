@@ -116,6 +116,68 @@ async function run() {
     assert.equal(keys.length,3);assert.ok(keys[0]);assert.ok(keys[1]);assert.notEqual(keys[1],keys[0]);assert.equal(keys[2],keys[1])
     console.log('session recovery: a new conflict gets a new idempotency key and network retry keeps it');await context.close()
    }
+  {
+   const context=await browser.newContext();const page=await context.newPage();let detailReads=0;let detailTitle='Карточка до polling';const listQueries=[]
+   await context.route('**/api/**',async route=>{
+    const url=new URL(route.request().url()),path=url.pathname
+    if(path==='/api/tasks/session-task'){
+     detailReads++
+     await route.fulfill({json:{id:'session-task',title:detailTitle,status:'PENDING',version:detailReads}});return
+    }
+    if(path==='/api/tasks'&&route.request().method()==='GET'){
+     const query={status:url.searchParams.get('status')||'',page:url.searchParams.get('page')||'0'};listQueries.push(query)
+     const status=query.status==='SUCCEEDED'?'SUCCEEDED':'PENDING'
+     await route.fulfill({json:{items:[row('session-task','Задание для проверки маршрута',status)],page:Number(query.page),hasNext:true}});return
+    }
+    if(path==='/api/operator/tasks/problems'){
+     const query={status:url.searchParams.get('status')||'',page:url.searchParams.get('page')||'0'};listQueries.push(query)
+     await route.fulfill({json:{items:[row('problem-route','Проблемное задание','FAILED')],page:Number(query.page),hasNext:false}});return
+    }
+    await route.fulfill({status:404,json:{message:'Unexpected test request'}})
+   })
+   await page.goto('http://127.0.0.1:5173/tasks');await login(page,'alice','demo-alice')
+   assert.ok(await page.evaluate(()=>sessionStorage.length>0),'successful login should survive a reload in this tab')
+   await page.getByRole('button',{name:'Задание для проверки маршрута'}).filter({visible:true}).click()
+   await page.getByRole('heading',{name:'Карточка до polling'}).waitFor()
+   assert.equal(new URL(page.url()).pathname,'/tasks/session-task')
+   const readsBeforePoll=detailReads;detailTitle='Карточка обновлена при polling'
+   await page.waitForTimeout(5400)
+   assert.ok(detailReads>readsBeforePoll,'selected task should be reloaded on the five-second interval')
+   await page.getByRole('heading',{name:'Карточка обновлена при polling'}).waitFor()
+   await page.reload()
+   await page.getByRole('heading',{name:'Карточка обновлена при polling'}).waitFor()
+   assert.equal(new URL(page.url()).pathname,'/tasks/session-task')
+   await page.goBack()
+   await page.getByRole('heading',{name:'Мои задания'}).waitFor()
+   const readsAfterClose=detailReads;await page.waitForTimeout(5200)
+   assert.equal(detailReads,readsAfterClose,'detail polling must stop after returning to the registry')
+   await page.getByLabel('Статус исполнения').selectOption('SUCCEEDED')
+   await page.getByRole('button',{name:'Задание для проверки маршрута'}).filter({visible:true}).waitFor()
+   assert.equal(new URL(page.url()).searchParams.get('status'),'SUCCEEDED')
+   await page.getByRole('button',{name:'Далее'}).click()
+   assert.equal(new URL(page.url()).searchParams.get('page'),'1')
+   const listReadsBeforePoll=listQueries.length;await page.waitForTimeout(5400)
+   assert.ok(listQueries.length>listReadsBeforePoll,'registry should reload on the five-second interval')
+   assert.deepEqual(listQueries.at(-1),{status:'SUCCEEDED',page:'1'},'registry polling must keep the active filter and page')
+   await page.goBack()
+   assert.equal(new URL(page.url()).searchParams.get('status'),'SUCCEEDED')
+   assert.ok(['0',null].includes(new URL(page.url()).searchParams.get('page')))
+   await page.goForward()
+   assert.equal(new URL(page.url()).searchParams.get('page'),'1')
+   await page.getByRole('button',{name:'Выйти'}).click()
+   assert.equal(await page.evaluate(()=>sessionStorage.length),0,'logout should clear the saved credentials')
+   await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
+   await page.getByRole('heading',{name:'Рабочая консоль'}).waitFor()
+   await page.getByRole('button',{name:'Проблемы',exact:true}).click()
+   assert.equal(new URL(page.url()).pathname,'/tasks/problems')
+   await page.reload()
+   await page.getByRole('heading',{name:'Проблемы обмена'}).waitFor()
+   assert.equal(new URL(page.url()).pathname,'/tasks/problems')
+   await page.getByRole('button',{name:'Выйти'}).click()
+   assert.equal(await page.evaluate(()=>sessionStorage.length),0,'operator logout should also clear the saved credentials')
+   console.log('routes/session/polling: direct task route, reload, history, session restore, filtered registry and detail polling passed')
+   await context.close()
+  }
   for(const width of [390,1440]) {
    const context=await browser.newContext({viewport:{width,height:900}});const page=await context.newPage();const title='Я'.repeat(200)
    await context.route('**/api/**',async route=>{

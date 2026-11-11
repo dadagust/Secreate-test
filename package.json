@@ -8,7 +8,7 @@
   },
   "scripts": {
     "backlog": "backlog",
-    "test:tools": "node --test .claude/hooks/guard-commands.test.mjs .claude/hooks/codex-hooks.test.mjs scripts/agent-instructions.test.mjs",
+    "test:tools": "node --test .claude/hooks/guard-commands.test.mjs .claude/hooks/codex-hooks.test.mjs scripts/agent-instructions.test.mjs scripts/overview-generator.test.mjs",
     "skills:sync": "node scripts/sync-agent-skills.mjs",
     "skills:check": "node scripts/sync-agent-skills.mjs --check",
     "docs:dev": "vitepress dev docs",

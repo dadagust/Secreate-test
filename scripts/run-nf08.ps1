@@ -1,6 +1,9 @@
-param(
+﻿param(
     [string]$JavaHome = $env:JAVA_HOME,
-    [ValidateRange(0, 900)][int]$DrainSeconds = 180,
+    [ValidateRange(0, 900)][int]$DrainSeconds = 120,
+    [ValidateRange(1, 10000)][int]$WorkerPollIntervalMs = 1000,
+    [ValidateRange(1, 256)][int]$WorkerMaxItemsPerTick = 16,
+    [ValidateRange(0, 1)][double]$MaxBusinessRejectionRate = 0.01,
     [string]$ReportPath = ""
 )
 
@@ -61,6 +64,9 @@ try {
     $env:POSTGRES_PUBLISHED_PORT = [string](Get-FreeTcpPort)
     $env:NF08_API_PUBLISHED_PORT = [string](Get-FreeTcpPort)
     $env:NF08_EMULATOR_PUBLISHED_PORT = [string](Get-FreeTcpPort)
+    $env:NF08_WORKER_POLL_MS = [string]$WorkerPollIntervalMs
+    $env:NF08_WORKER_MAX_ITEMS_PER_TICK = [string]$WorkerMaxItemsPerTick
+    $env:NF08_MAX_BUSINESS_REJECTION_RATE = [string]$MaxBusinessRejectionRate
     $composeFiles = @('-f', 'compose.yaml', '-f', 'compose.performance.yaml')
     $projectArgs = @('compose', '--project-name', $projectName) + $composeFiles
 
@@ -120,6 +126,11 @@ try {
     $postgresId = (Invoke-Docker ($projectArgs + @('ps', '-q', 'postgres'))).Trim()
     $backendId = (Invoke-Docker ($projectArgs + @('ps', '-q', 'backend'))).Trim()
     $emulatorId = (Invoke-Docker ($projectArgs + @('ps', '-q', 'emulator'))).Trim()
+    $workerPollIntervalMs = [int]((Invoke-Docker @('exec', $backendId, 'printenv', 'EXCHANGE_WORKER_FIXED_DELAY_MS')).Trim())
+    $workerMaxItemsPerTick = [int]((Invoke-Docker @('exec', $backendId, 'printenv', 'EXCHANGE_WORKER_MAX_ITEMS_PER_TICK')).Trim())
+    if ($workerPollIntervalMs -ne $WorkerPollIntervalMs -or $workerMaxItemsPerTick -ne $WorkerMaxItemsPerTick) {
+        throw "Worker config mismatch: expected ${WorkerPollIntervalMs}ms/$WorkerMaxItemsPerTick items, actual ${workerPollIntervalMs}ms/$workerMaxItemsPerTick items."
+    }
     $limits = @(
         (Get-ContainerLimits 'postgres' $postgresId),
         (Get-ContainerLimits 'backend' $backendId),
@@ -148,12 +159,13 @@ try {
     $env:NF08_RUN_ID = $runId
     $env:NF08_FIXTURE_FILE = $fixturePath
     $env:NF08_DRAIN_SECONDS = [string]$DrainSeconds
+    $env:NF08_WORKER_POLL_MS = [string]$WorkerPollIntervalMs
+    $env:NF08_WORKER_MAX_ITEMS_PER_TICK = [string]$WorkerMaxItemsPerTick
+    $env:NF08_MAX_BUSINESS_REJECTION_RATE = [string]$MaxBusinessRejectionRate
     $loadOutput = Join-Path $artifactRoot 'nf08-load-results.json'
     & node (Join-Path $PSScriptRoot 'performance/nf08-load.mjs') --output $loadOutput
     $loadExit = $LASTEXITCODE
     if (-not (Test-Path -LiteralPath $loadOutput)) { throw "NF08 generator did not write its report (exit $loadExit)." }
-    if ($loadExit -ne 0) { throw "NF08 latency profile failed with exit code $loadExit. Detailed report: $loadOutput" }
-
     $report = Get-Content -Raw -Encoding UTF8 $loadOutput | ConvertFrom-Json
     $dockerInfo = (Invoke-Docker @('info', '--format', '{{.NCPU}}|{{.MemTotal}}')).Trim().Split('|')
     $dockerVersions = (Invoke-Docker @('version', '--format', '{{.Client.Version}}|{{.Server.Version}}')).Trim().Split('|')
@@ -178,7 +190,8 @@ try {
         maven = $mavenVersion
         springBoot = '4.1.2'
         postgres = $postgresVersion
-        workerPollIntervalMs = 50
+        workerPollIntervalMs = $workerPollIntervalMs
+        workerMaxItemsPerTick = $workerMaxItemsPerTick
         dockerClient = $dockerVersions[0]
         dockerServer = $dockerVersions[1]
         compose = ((Invoke-Docker @('compose', 'version', '--short')).Trim())
@@ -193,6 +206,7 @@ try {
         emulatorFaultModes = $faults
     })
     $report | ConvertTo-Json -Depth 12 | Set-Content -Encoding UTF8 $ReportPath
+    if ($loadExit -ne 0) { throw "NF08 profile failed with exit code $loadExit. JSON preserved at $ReportPath; diagnostics: $loadOutput" }
     $succeeded = $true
     Write-Output "NF08 result: $ReportPath"
     Write-Output "Applied caps: $totalCpu CPU and $([math]::Round($totalMemory / 1GB, 3)) GiB; cgroup confirms $totalCgroupCpu CPU and $([math]::Round($totalCgroupMemory / 1GB, 3)) GiB."
@@ -205,7 +219,7 @@ finally {
     elseif ($createdProject) {
         Write-Warning "Performance environment retained for diagnosis. Stop it with: docker compose --project-name $projectName -f compose.yaml -f compose.performance.yaml down --volumes --remove-orphans"
     }
-    Remove-Item Env:POSTGRES_PUBLISHED_PORT, Env:NF08_API_PUBLISHED_PORT, Env:NF08_EMULATOR_PUBLISHED_PORT, Env:NF08_API_URL, Env:NF08_PROJECT, Env:NF08_POSTGRES_CONTAINER, Env:NF08_RUN_ID, Env:NF08_FIXTURE_FILE, Env:NF08_DRAIN_SECONDS -ErrorAction SilentlyContinue
+    Remove-Item Env:POSTGRES_PUBLISHED_PORT, Env:NF08_API_PUBLISHED_PORT, Env:NF08_EMULATOR_PUBLISHED_PORT, Env:NF08_API_URL, Env:NF08_PROJECT, Env:NF08_POSTGRES_CONTAINER, Env:NF08_RUN_ID, Env:NF08_FIXTURE_FILE, Env:NF08_DRAIN_SECONDS, Env:NF08_WORKER_POLL_MS, Env:NF08_WORKER_MAX_ITEMS_PER_TICK, Env:NF08_MAX_BUSINESS_REJECTION_RATE -ErrorAction SilentlyContinue
     if ($javaHomeWasSet) { $env:JAVA_HOME = $previousJavaHome }
     else { Remove-Item Env:JAVA_HOME -ErrorAction SilentlyContinue }
     Pop-Location

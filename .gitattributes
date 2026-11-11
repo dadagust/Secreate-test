@@ -20,3 +20,4 @@ backlog/** text eol=lf
 docs/** text eol=lf
 prompts/** text eol=lf
 scripts/** text eol=lf
+/backend/mvnw text eol=lf

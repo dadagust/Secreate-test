@@ -17,6 +17,39 @@ class DeliveryTest {
     @org.springframework.beans.factory.annotation.Value("${local.server.port}") int port;
     @Autowired javax.sql.DataSource dataSource;
 
+    @Test void workerTickDeliversSeveralReadyTasksInOneBoundedCycle() throws Exception {
+        var ids = new java.util.ArrayList<UUID>();
+        String marker = UUID.randomUUID().toString();
+        for (int i = 0; i < 4; i++) ids.add(service.create("alice", UUID.randomUUID().toString(), marker + "-" + i).id());
+
+        var emulator = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        emulator.createContext("/operations/", exchange -> {
+            String id = exchange.getRequestURI().getPath().substring("/operations/".length());
+            byte[] response = (id + "|1|SUCCEEDED").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+            exchange.sendResponseHeaders(200, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        emulator.start();
+        try {
+            var worker = new DeliveryWorker(service, "http://127.0.0.1:" + emulator.getAddress().getPort(), true, 3);
+            worker.tick();
+
+            for (int i = 0; i < ids.size(); i++) {
+                var id = ids.get(i);
+                assertEquals(i < 3 ? "DONE" : "READY", db.queryForObject("select state from outbox where task_id=?", String.class, id), id.toString());
+            }
+            worker.tick();
+            for (var id : ids) {
+                assertEquals("DONE", db.queryForObject("select state from outbox where task_id=?", String.class, id), id.toString());
+                assertEquals("SUCCEEDED", service.get("alice", id).status(), id.toString());
+            }
+        } finally {
+            emulator.stop(0);
+        }
+    }
+
     @Test void registryFiltersBeforePaginationAndEnforcesScope() throws Exception {
         String marker=UUID.randomUUID().toString();
         var problemIds=new java.util.ArrayList<UUID>();
@@ -691,5 +724,82 @@ class DeliveryTest {
         assertTrue(service.complete(stale, 1, "FAILED"));
         assertEquals(2, service.get("alice", lease.id()).version());
         assertEquals("SUCCEEDED", service.get("alice", lease.id()).status());
+    }
+
+    @Test void interruptedWorkerDoesNotClaimBeforeItsFirstDelivery() {
+        var task = freshTask();
+        var worker = new DeliveryWorker(service, "http://127.0.0.1:1", true, 3);
+        Thread.currentThread().interrupt();
+        try {
+            worker.tick();
+            assertTrue(Thread.currentThread().isInterrupted(), "worker must preserve the caller interrupt flag");
+            assertEquals(0, db.queryForObject("select attempts from outbox where task_id=?", Integer.class, task.id()));
+            assertEquals(0, db.queryForObject("select count(*) from exchange_events where task_id=? and event like 'ATTEMPT_%'", Integer.class, task.id()));
+        } finally {
+            Thread.interrupted();
+        }
+    }
+
+    @Test void interruptDuringHttpFinalizesAttemptAndStopsFurtherClaims() throws Exception {
+        var first = freshTask();
+        var second = freshTask();
+        db.update("update outbox set next_attempt=now()-interval '1 second' where task_id=?", first.id());
+        db.update("update outbox set next_attempt=now() where task_id=?", second.id());
+        var entered = new java.util.concurrent.CountDownLatch(1);
+        var release = new java.util.concurrent.CountDownLatch(1);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var emulator = com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1", 0), 0);
+        emulator.createContext("/operations/", exchange -> {
+            int call = calls.incrementAndGet();
+            String id = exchange.getRequestURI().getPath().substring("/operations/".length());
+            if (call == 1) {
+                entered.countDown();
+                try { release.await(5, java.util.concurrent.TimeUnit.SECONDS); }
+                catch (InterruptedException interrupted) { Thread.currentThread().interrupt(); }
+            }
+            byte[] response = (id + "|1|SUCCEEDED").getBytes(java.nio.charset.StandardCharsets.UTF_8);
+            try {
+                exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=utf-8");
+                exchange.sendResponseHeaders(200, response.length);
+                exchange.getResponseBody().write(response);
+            } catch (java.io.IOException ignored) {
+                // The interrupted client may have closed this response; the server-side request is still observed.
+            } finally { exchange.close(); }
+        });
+        emulator.start();
+        var worker = new DeliveryWorker(service, "http://127.0.0.1:" + emulator.getAddress().getPort(), true, 3);
+        var interruptObserved = new java.util.concurrent.atomic.AtomicBoolean();
+        var workerThread = new Thread(() -> {
+            worker.tick();
+            interruptObserved.set(Thread.currentThread().isInterrupted());
+        }, "delivery-interrupt-regression");
+        try {
+            workerThread.start();
+            assertTrue(entered.await(5, java.util.concurrent.TimeUnit.SECONDS), "first HTTP attempt should start");
+            workerThread.interrupt();
+            workerThread.join(5000);
+            assertFalse(workerThread.isAlive(), "interrupted tick should return promptly");
+            assertTrue(interruptObserved.get(), "worker should restore the interrupt flag after persisting retry state");
+            assertEquals(1, db.queryForObject("select attempts from outbox where task_id=?", Integer.class, first.id()));
+            assertEquals("READY", db.queryForObject("select state from outbox where task_id=?", String.class, first.id()));
+            assertTrue(db.queryForObject("select lease_token is null and lease_until is null and next_attempt>now() from outbox where task_id=?", Boolean.class, first.id()));
+            assertEquals(0, db.queryForObject("select attempts from outbox where task_id=?", Integer.class, second.id()), "the same tick must not claim the next task");
+            assertEquals(1, db.queryForObject("select count(*) from exchange_events where task_id=? and event='ATTEMPT_1'", Integer.class, first.id()));
+            assertEquals(1, db.queryForObject("select count(*) from exchange_events where task_id=? and event='AMBIGUOUS_RETRY'", Integer.class, first.id()));
+
+            release.countDown();
+            db.update("update outbox set next_attempt=now() where task_id=?", first.id());
+            db.update("update outbox set next_attempt=now()+interval '1 hour' where task_id=?", second.id());
+            assertTrue(worker.deliverOne(), "the interrupted attempt must remain retryable");
+            assertEquals("DONE", db.queryForObject("select state from outbox where task_id=?", String.class, first.id()));
+            assertEquals(2, db.queryForObject("select attempts from outbox where task_id=?", Integer.class, first.id()));
+            assertEquals(0, db.queryForObject("select attempts from outbox where task_id=?", Integer.class, second.id()));
+            assertEquals("SUCCEEDED", service.get("alice", first.id()).status());
+        } finally {
+            release.countDown();
+            workerThread.interrupt();
+            workerThread.join(1000);
+            emulator.stop(0);
+        }
     }
 }

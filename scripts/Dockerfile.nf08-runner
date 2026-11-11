@@ -1,0 +1,6 @@
+FROM docker:29-cli
+
+# A disposable Linux load-generator/Maven client for Docker Desktop. It talks
+# to the host daemon through the Docker socket and is not resource-limited by
+# compose.performance.yaml's service quotas.
+RUN apk add --no-cache openjdk21-jdk nodejs npm bash util-linux curl coreutils

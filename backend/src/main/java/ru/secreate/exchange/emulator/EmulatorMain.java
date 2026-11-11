@@ -13,6 +13,8 @@ import java.util.concurrent.Executors;
 
 /** Independent local executor. Its ledger is separate from the application's tables. */
 public class EmulatorMain {
+    private static final System.Logger LOG = System.getLogger(EmulatorMain.class.getName());
+
     private static Connection connection() throws SQLException {
         return DriverManager.getConnection(System.getenv("EXECUTOR_DB_URL"), System.getenv("EXECUTOR_DB_USER"), System.getenv("EXECUTOR_DB_PASSWORD"));
     }
@@ -122,6 +124,11 @@ public class EmulatorMain {
             return;
         }
 
+        long connectionMicros = 0;
+        long faultModeMicros = 0;
+        long executorTransactionMicros = 0;
+        long transactionStarted = 0;
+        String timingOutcome = "FAILED";
         try {
             byte[] bytes = exchange.getRequestBody().readNBytes(801);
             if (bytes.length > 800) throw new IllegalArgumentException("Payload too large");
@@ -130,11 +137,27 @@ public class EmulatorMain {
             boolean duplicate;
             int delay;
             String response;
-            try (var connection = connection()) {
+            long connectionStarted = System.nanoTime();
+            Connection opened;
+            try {
+                opened = connection();
+            } finally {
+                connectionMicros = elapsedMicros(connectionStarted);
+            }
+            try (var connection = opened) {
                 connection.setAutoCommit(false);
-                var mode = FaultModeStore.read(connection, true);
+                transactionStarted = System.nanoTime();
+                long faultStarted = System.nanoTime();
+                FaultModeStore.Modes mode;
+                try {
+                    mode = FaultModeStore.read(connection, true);
+                } finally {
+                    faultModeMicros = elapsedMicros(faultStarted);
+                }
                 if (mode.unavailable()) {
                     connection.rollback();
+                    executorTransactionMicros = elapsedMicros(transactionStarted);
+                    timingOutcome = "UNAVAILABLE";
                     respond(exchange, 503, "Executor temporarily unavailable", "text/plain; charset=utf-8");
                     return;
                 }
@@ -149,6 +172,8 @@ public class EmulatorMain {
                         if (!result.next()) throw new SQLException("Execution missing after insert");
                         if (!payload.equals(result.getString(1))) {
                             connection.rollback();
+                            executorTransactionMicros = elapsedMicros(transactionStarted);
+                            timingOutcome = "PAYLOAD_CONFLICT";
                             respond(exchange, 409, "Payload conflict", "text/plain; charset=utf-8");
                             return;
                         }
@@ -160,23 +185,37 @@ public class EmulatorMain {
                 delay = mode.delayMs();
                 if (drop || duplicate || delay > 0) FaultModeStore.consumeOneShots(connection);
                 connection.commit();
+                executorTransactionMicros = elapsedMicros(transactionStarted);
             }
             if (drop) {
+                timingOutcome = "REPLY_DROPPED_AFTER_COMMIT";
                 exchange.close();
                 return;
             }
             if (delay > 0) Thread.sleep(delay);
             if (duplicate) response += "\n" + response;
+            timingOutcome = "RESULT_SENT";
             respond(exchange, 200, response, "text/plain; charset=utf-8");
         } catch (SQLException exception) {
+            timingOutcome = "DATABASE_FAILURE";
             respond(exchange, 503, "Storage temporarily unavailable", "text/plain; charset=utf-8");
         } catch (IllegalArgumentException exception) {
+            timingOutcome = "INVALID_REQUEST";
             respond(exchange, 400, "Invalid operation", "text/plain; charset=utf-8");
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
+            timingOutcome = "RESULT_DELAY_INTERRUPTED_AFTER_COMMIT";
             respond(exchange, 503, "Executor interrupted", "text/plain; charset=utf-8");
         } catch (Exception exception) {
+            timingOutcome = "INTERNAL_FAILURE";
             respond(exchange, 500, "Internal error", "text/plain; charset=utf-8");
+        } finally {
+            if (transactionStarted != 0 && executorTransactionMicros == 0) {
+                executorTransactionMicros = elapsedMicros(transactionStarted);
+            }
+            LOG.log(System.Logger.Level.INFO,
+                    "emulator_timing operationId={0} outcome={1} connection_us={2} fault_mode_lock_us={3} executor_transaction_us={4}",
+                    id, timingOutcome, Long.toString(connectionMicros), Long.toString(faultModeMicros), Long.toString(executorTransactionMicros));
         }
     }
 
@@ -226,5 +265,9 @@ public class EmulatorMain {
         } catch (java.io.IOException exception) {
             exchange.close();
         }
+    }
+
+    private static long elapsedMicros(long startedAt) {
+        return (System.nanoTime() - startedAt) / 1_000;
     }
 }

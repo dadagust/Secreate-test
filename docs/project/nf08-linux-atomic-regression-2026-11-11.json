@@ -1,0 +1,178 @@
+{
+  "profile": {
+    "warmupSeconds": 30,
+    "measurementSeconds": 120,
+    "clients": 20,
+    "requestDeadlineSeconds": 5,
+    "clientBehavior": "one request in flight per client; next request starts after prior completion",
+    "measuredStart": "2026-11-11T12:12:16.561Z",
+    "measuredEnd": "2026-11-11T12:14:16.861Z",
+    "warmup": {
+      "requestedSeconds": 30,
+      "requestCount": 743
+    },
+    "measurement": {
+      "requestedSeconds": 120,
+      "requestCount": 3059
+    }
+  },
+  "operations": {
+    "list": {
+      "requests": 762,
+      "successful": 762,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 782.6455759999953,
+      "p95MsAllAttempts": 1191.822976000025,
+      "p95MsSuccessful": 1191.822976000025,
+      "p99MsAllAttempts": 1302.8288570000004,
+      "meanMsAllAttempts": 770.0209342729653,
+      "maxMsAllAttempts": 1588.7731290000083,
+      "statusCodes": {
+        "200": 762
+      },
+      "errorReasons": {}
+    },
+    "detail": {
+      "requests": 766,
+      "successful": 766,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 715.0784560000029,
+      "p95MsAllAttempts": 1185.5167559999973,
+      "p95MsSuccessful": 1185.5167559999973,
+      "p99MsAllAttempts": 1314.233054999997,
+      "meanMsAllAttempts": 760.3473714203647,
+      "maxMsAllAttempts": 1509.7135889999918,
+      "statusCodes": {
+        "200": 766
+      },
+      "errorReasons": {}
+    },
+    "create": {
+      "requests": 766,
+      "successful": 766,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 794.179753000004,
+      "p95MsAllAttempts": 1213.3344120000038,
+      "p95MsSuccessful": 1213.3344120000038,
+      "p99MsAllAttempts": 1487.1932820000002,
+      "meanMsAllAttempts": 795.1984036396851,
+      "maxMsAllAttempts": 1803.5015319999948,
+      "statusCodes": {
+        "200": 766
+      },
+      "errorReasons": {}
+    },
+    "patch": {
+      "requests": 765,
+      "successful": 765,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 800.2685659999988,
+      "p95MsAllAttempts": 1210.4931729999953,
+      "p95MsSuccessful": 1210.4931729999953,
+      "p99MsAllAttempts": 1400.862009000004,
+      "meanMsAllAttempts": 817.8299067058824,
+      "maxMsAllAttempts": 1810.4099669999996,
+      "statusCodes": {
+        "200": 765
+      },
+      "errorReasons": {}
+    }
+  },
+  "combined": {
+    "reads": {
+      "requests": 1528,
+      "successful": 1528,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 720.5907149999985,
+      "p95MsAllAttempts": 1191.3488790000047,
+      "p95MsSuccessful": 1191.3488790000047,
+      "p99MsAllAttempts": 1311.1155370000051,
+      "meanMsAllAttempts": 765.1714911151827
+    },
+    "changes": {
+      "requests": 1531,
+      "successful": 1531,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 798.5920859999896,
+      "p95MsAllAttempts": 1212.2332090000127,
+      "p95MsSuccessful": 1212.2332090000127,
+      "p99MsAllAttempts": 1414.7637039999972,
+      "meanMsAllAttempts": 806.5067640875246
+    }
+  },
+  "externalExecution": {
+    "measurementBoundary": {
+      "accepted": 766,
+      "externallyExecuted": 0,
+      "unfinished": 766,
+      "externallyNotExecuted": 766,
+      "executedButLocallyUnfinished": 0
+    },
+    "afterDrain": {
+      "accepted": 766,
+      "externallyExecuted": 0,
+      "unfinished": 766,
+      "externallyNotExecuted": 766,
+      "executedButLocallyUnfinished": 0,
+      "drainSeconds": 0
+    },
+    "latencyFromTaskCreatedToExecutorCommitMs": {
+      "samples": 0,
+      "p50": null,
+      "p95": null,
+      "mean": null
+    }
+  },
+  "environment": {
+    "runId": "9e544669c3e746f68d38d284de446fc9",
+    "composeProject": "nf08-linux-20261111-121001-9e544669",
+    "platform": "linux",
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "node": "v24.22.1",
+    "npm": "11.12.1",
+    "maven": "Apache Maven 3.10.0 (c43a36b8d67be7e0805a411bc0898af1a51f5472)",
+    "springBoot": "4.1.2",
+    "docker": "29.2.1",
+    "compose": "5.7.0",
+    "dockerEngineResources": "8|33187651584",
+    "java": "Picked up JAVA_TOOL_OPTIONS: -Xms256m -Xmx1200m -XX:ActiveProcessorCount=2\nopenjdk version \"21.0.13\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-21.0.13+9 (build 21.0.13+9-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.13+9 (build 21.0.13+9-LTS, mixed mode, sharing)",
+    "postgres": "17.11",
+    "workerPollIntervalMs": 1000,
+    "resourceLimits": [
+      {
+        "service": "postgres",
+        "hostNanoCpus": 200000000,
+        "hostMemoryBytes": 1610612736,
+        "cgroupCpuMax": "20000 100000",
+        "cgroupMemoryMaxBytes": 1610612736
+      },
+      {
+        "service": "backend",
+        "hostNanoCpus": 1700000000,
+        "hostMemoryBytes": 2415919104,
+        "cgroupCpuMax": "170000 100000",
+        "cgroupMemoryMaxBytes": 2415919104
+      },
+      {
+        "service": "emulator",
+        "hostNanoCpus": 100000000,
+        "hostMemoryBytes": 268435456,
+        "cgroupCpuMax": "10000 100000",
+        "cgroupMemoryMaxBytes": 268435456
+      }
+    ],
+    "emulatorFaultModes": {
+      "unavailable": false,
+      "dropAfterSave": false,
+      "duplicateResult": false,
+      "delayMs": 0
+    },
+    "loadGenerator": "Node.js outside container quotas"
+  }
+}

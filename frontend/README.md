@@ -1,5 +1,5 @@
 ﻿# Frontend
 
-React, TypeScript и Vite. Запуск и демонстрационные пользователи описаны в корневом README. Правила стилей и компонентов находятся в AGENTS.md и docs/project/frontend.md.
+React, TypeScript и Vite: реестр и создание заданий инициатора, операторские карточки, проблемы, сверка, восстановление и назначение ответственного. Все данные запрашиваются у Spring API; при локальной разработке Vite проксирует `/api` на `localhost:8080`, а в полном Compose это делает nginx. Запуск и демонстрационные пользователи описаны в [корневом README](../README.md). Правила стилей и компонентов находятся в [AGENTS.md](AGENTS.md) и [документации frontend](../docs/project/frontend.md).
 
-Из этого каталога: npm ci, npm run lint, npm run test:styles, npm run build. Браузерный тест npm run test:browser требует запущенных backend, эмулятора, Vite и Chrome; npm run test:session использует управляемые ответы API и требует Vite и Chrome.
+Из этого каталога: `npm ci`, `npm run lint`, `npm run test:styles`, `npm run build`. Браузерный `npm run test:browser` требует работающих backend, эмулятора, frontend и Chrome/Chromium; `npm run test:session` использует управляемые ответы API и требует frontend и браузер. Путь к браузеру на Linux задаётся через `TASK3_BROWSER=/usr/bin/chromium`. Для дополнительных тестов с PostgreSQL используйте только изолированную тестовую базу, как описано в [проверках качества](../docs/project/quality-checks.md).

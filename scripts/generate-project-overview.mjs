@@ -1,10 +1,10 @@
 /**
- * Builds PROJECT_OVERVIEW.html, a standalone interactive view of PROJECT_OVERVIEW.md.
+ * Builds PROJECT_OVERVIEW.md and its standalone interactive HTML from a maintained source.
  *
  *   node scripts/generate-project-overview.mjs          write the HTML
  *   node scripts/generate-project-overview.mjs --check  fail if the committed HTML is stale
  *
- * The output depends only on the Markdown and this script (no timestamps), so --check
+ * The output depends on the source, README title and this script (no timestamps), so --check
  * can compare it byte for byte. Supported Markdown: #/##/### headings, paragraphs,
  * "-" and "1." lists, pipe tables, fenced code, inline code, bold and links.
  */
@@ -13,7 +13,8 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..')
-const sourcePath = join(rootDir, 'PROJECT_OVERVIEW.md')
+const sourcePath = join(rootDir, 'docs/project/overview-source.txt')
+const markdownPath = join(rootDir, 'PROJECT_OVERVIEW.md')
 const outputPath = join(rootDir, 'PROJECT_OVERVIEW.html')
 const checkOnly = process.argv.includes('--check')
 // The project name lives in the first heading of README.md.
@@ -29,6 +30,19 @@ function escapeHtml(text) {
     .replaceAll('"', '&quot;')
 }
 
+function resolveStandaloneHref(href) {
+  if (href === 'PROJECT_OVERVIEW.md') return 'docs/.vitepress/dist/project/overview.html'
+
+  const suffixIndex = href.search(/[?#]/)
+  const path = suffixIndex === -1 ? href : href.slice(0, suffixIndex)
+  const suffix = suffixIndex === -1 ? '' : href.slice(suffixIndex)
+  if (!path.startsWith('docs/') || !path.endsWith('.md')) return href
+
+  let outputPath = path.slice('docs/'.length).replace(/\.md$/, '.html')
+  outputPath = outputPath.replace(/(^|\/)README\.html$/, '$1index.html')
+  return `docs/.vitepress/dist/${outputPath}${suffix}`
+}
+
 const inlinePattern = /`([^`]+)`|\[((?:[^\]`]|`[^`]*`)+)\]\(([^)\s]+)\)|\*\*(.+?)\*\*/g
 
 function renderInline(text) {
@@ -40,13 +54,14 @@ function renderInline(text) {
     if (code !== undefined) {
       html += `<code>${escapeHtml(code)}</code>`
     } else if (linkText !== undefined) {
-      const external = /^https?:\/\//.test(href)
+      const targetHref = resolveStandaloneHref(href)
+      const external = /^https?:\/\//.test(targetHref)
       const rel = external ? ' rel="noopener noreferrer"' : ''
       // A link with another scheme (javascript:, data:) stays plain text.
-      const unsafe = /^[a-z][a-z0-9+.-]*:/i.test(href) && !/^(https?|mailto):/i.test(href)
+      const unsafe = /^[a-z][a-z0-9+.-]*:/i.test(targetHref) && !/^(https?|mailto):/i.test(targetHref)
       html += unsafe
         ? renderInline(linkText)
-        : `<a href="${escapeHtml(href)}"${rel}>${renderInline(linkText)}</a>`
+        : `<a href="${escapeHtml(targetHref)}"${rel}>${renderInline(linkText)}</a>`
     } else {
       html += `<strong>${renderInline(bold)}</strong>`
     }
@@ -362,7 +377,7 @@ function renderDocument(doc) {
   const title = doc.title || 'Обзор проекта'
   return `<!--
 GENERATED FILE — DO NOT EDIT MANUALLY.
-Canonical source: PROJECT_OVERVIEW.md
+Canonical source: docs/project/overview-source.txt
 Regenerate using the project overview build command: npm run overview:build
 -->
 <!doctype html>
@@ -378,7 +393,7 @@ Regenerate using the project overview build command: npm run overview:build
 <body>
   <a class="skip" href="#content">Перейти к содержимому</a>
   <header class="topbar">
-    <div class="brand">${escapeHtml(projectName)}<small>${escapeHtml(title)} · источник: <a href="PROJECT_OVERVIEW.md">PROJECT_OVERVIEW.md</a></small></div>
+    <div class="brand">${escapeHtml(projectName)}<small>${escapeHtml(title)} · источник: <a href="${resolveStandaloneHref('PROJECT_OVERVIEW.md')}">PROJECT_OVERVIEW.md</a></small></div>
     <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="toc" aria-expanded="true">Разделы</button>
     <div class="search" role="search">
       <input id="overview-search" type="search" placeholder="Поиск по обзору (/)" aria-label="Поиск по обзору" aria-describedby="search-status" autocomplete="off">
@@ -398,7 +413,7 @@ Regenerate using the project overview build command: npm run overview:build
       <p id="search-status" class="status" role="status" aria-live="polite"></p>
 ${doc.sections.map(renderSection).join('\n')}
       <footer>
-        <p>Сгенерировано из <a href="PROJECT_OVERVIEW.md">PROJECT_OVERVIEW.md</a> командой <code>npm run overview:build</code>. Не редактируйте этот файл вручную; <code>npm run overview:check</code> проверяет его актуальность.</p>
+        <p>Ссылки на документы открывают их HTML-страницы из <code>docs/.vitepress/dist/</code>. Если папки ещё нет, сначала соберите документацию командой <code>npm run docs:build</code>. Этот обзор сгенерирован из <code>docs/project/overview-source.txt</code>; используйте <code>npm run overview:build</code> для обновления и <code>npm run overview:check</code> для проверки.</p>
       </footer>
     </main>
   </div>
@@ -408,26 +423,21 @@ ${doc.sections.map(renderSection).join('\n')}
 `
 }
 
-const html = renderDocument(parse(readFileSync(sourcePath, 'utf8')))
+const markdown = readFileSync(sourcePath, 'utf8').replace(/\r\n/g, '\n')
+const html = renderDocument(parse(markdown))
 
 if (checkOnly) {
-  let current = null
-  try {
-    current = readFileSync(outputPath, 'utf8').replace(/\r\n/g, '\n')
-  } catch (error) {
-    if (error.code !== 'ENOENT') throw error
-  }
-  if (current !== html) {
-    console.error(
-      current === null
-        ? 'PROJECT_OVERVIEW.html is missing. Run: npm run overview:build'
-        : 'PROJECT_OVERVIEW.html is out of date with PROJECT_OVERVIEW.md. Run: npm run overview:build',
-    )
-    process.exitCode = 1
-  } else {
-    console.log('PROJECT_OVERVIEW.html is up to date.')
+  for (const [path, expected] of [[markdownPath, markdown], [outputPath, html]]) {
+    let current = null
+    try { current = readFileSync(path, 'utf8').replace(/\r\n/g, '\n') }
+    catch (error) { if (error.code !== 'ENOENT') throw error }
+    if (current !== expected) {
+      console.error(`${path} is missing or out of date. Run: npm run overview:build`)
+      process.exitCode = 1
+    } else console.log(`${path} is up to date.`)
   }
 } else {
+  writeFileSync(markdownPath, markdown)
   writeFileSync(outputPath, html)
-  console.log('Generated PROJECT_OVERVIEW.html')
+  console.log('Generated PROJECT_OVERVIEW.md and PROJECT_OVERVIEW.html')
 }

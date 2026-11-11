@@ -1,0 +1,213 @@
+﻿{
+    "profile":  {
+                    "warmupSeconds":  30,
+                    "measurementSeconds":  120,
+                    "clients":  20,
+                    "requestDeadlineSeconds":  5,
+                    "clientBehavior":  "one request in flight per client; next request starts after prior completion",
+                    "measuredStart":  "2026-11-11T11:10:44.242Z",
+                    "measuredEnd":  "2026-11-11T11:12:44.612Z",
+                    "warmup":  {
+                                   "requestedSeconds":  30,
+                                   "requestCount":  804
+                               },
+                    "measurement":  {
+                                        "requestedSeconds":  120,
+                                        "requestCount":  3294
+                                    }
+                },
+    "operations":  {
+                       "list":  {
+                                    "requests":  824,
+                                    "successful":  824,
+                                    "errors":  0,
+                                    "timeouts":  0,
+                                    "p50MsAllAttempts":  698.872000000003,
+                                    "p95MsAllAttempts":  1101.9795000000013,
+                                    "p95MsSuccessful":  1101.9795000000013,
+                                    "p99MsAllAttempts":  1393.142399999997,
+                                    "meanMsAllAttempts":  721.3326822815532,
+                                    "maxMsAllAttempts":  1695.3556999999855,
+                                    "statusCodes":  {
+                                                        "200":  824
+                                                    },
+                                    "errorReasons":  {
+
+                                                     }
+                                },
+                       "detail":  {
+                                      "requests":  824,
+                                      "successful":  824,
+                                      "errors":  0,
+                                      "timeouts":  0,
+                                      "p50MsAllAttempts":  697.9825999999885,
+                                      "p95MsAllAttempts":  1100.0145000000048,
+                                      "p95MsSuccessful":  1100.0145000000048,
+                                      "p99MsAllAttempts":  1291.304300000018,
+                                      "meanMsAllAttempts":  705.3349362864083,
+                                      "maxMsAllAttempts":  1399.3283000000083,
+                                      "statusCodes":  {
+                                                          "200":  824
+                                                      },
+                                      "errorReasons":  {
+
+                                                       }
+                                  },
+                       "create":  {
+                                      "requests":  823,
+                                      "successful":  823,
+                                      "errors":  0,
+                                      "timeouts":  0,
+                                      "p50MsAllAttempts":  705.7844999999943,
+                                      "p95MsAllAttempts":  1184.2824999999866,
+                                      "p95MsSuccessful":  1184.2824999999866,
+                                      "p99MsAllAttempts":  1399.3497000000025,
+                                      "meanMsAllAttempts":  749.6503664641547,
+                                      "maxMsAllAttempts":  1670.960500000001,
+                                      "statusCodes":  {
+                                                          "200":  823
+                                                      },
+                                      "errorReasons":  {
+
+                                                       }
+                                  },
+                       "patch":  {
+                                     "requests":  823,
+                                     "successful":  823,
+                                     "errors":  0,
+                                     "timeouts":  0,
+                                     "p50MsAllAttempts":  705.4032000000007,
+                                     "p95MsAllAttempts":  1105.0566000000035,
+                                     "p95MsSuccessful":  1105.0566000000035,
+                                     "p99MsAllAttempts":  1300.8018999999986,
+                                     "meanMsAllAttempts":  743.4456620899139,
+                                     "maxMsAllAttempts":  1517.9688000000024,
+                                     "statusCodes":  {
+                                                         "200":  823
+                                                     },
+                                     "errorReasons":  {
+
+                                                      }
+                                 }
+                   },
+    "combined":  {
+                     "reads":  {
+                                   "requests":  1648,
+                                   "successful":  1648,
+                                   "errors":  0,
+                                   "timeouts":  0,
+                                   "p50MsAllAttempts":  698.2577000000019,
+                                   "p95MsAllAttempts":  1100.9012999999977,
+                                   "p95MsSuccessful":  1100.9012999999977,
+                                   "p99MsAllAttempts":  1294.631300000001,
+                                   "meanMsAllAttempts":  713.33380928398
+                               },
+                     "changes":  {
+                                     "requests":  1646,
+                                     "successful":  1646,
+                                     "errors":  0,
+                                     "timeouts":  0,
+                                     "p50MsAllAttempts":  705.6984999999986,
+                                     "p95MsAllAttempts":  1110.6628999999957,
+                                     "p95MsSuccessful":  1110.6628999999957,
+                                     "p99MsAllAttempts":  1313.0391000000018,
+                                     "meanMsAllAttempts":  746.5480142770358
+                                 }
+                 },
+    "externalExecution":  {
+                              "measurementBoundary":  {
+                                                          "accepted":  823,
+                                                          "externallyExecuted":  388,
+                                                          "unfinished":  436,
+                                                          "externallyNotExecuted":  435,
+                                                          "executedButLocallyUnfinished":  1
+                                                      },
+                              "afterDrain":  {
+                                                 "accepted":  823,
+                                                 "externallyExecuted":  388,
+                                                 "unfinished":  436,
+                                                 "externallyNotExecuted":  435,
+                                                 "executedButLocallyUnfinished":  1,
+                                                 "drainSeconds":  0
+                                             },
+                              "latencyFromTaskCreatedToExecutorCommitMs":  {
+                                                                               "samples":  388,
+                                                                               "p50":  43206.554,
+                                                                               "p95":  61208.84,
+                                                                               "mean":  43730.63025
+                                                                           }
+                          },
+    "environment":  {
+                        "runId":  "a7b3bf8dd75b4934b066b4fe621e3513",
+                        "composeProject":  "nf08-20261111-140946-a7b3bf",
+                        "timestamp":  "2026-11-11T14:12:47.9417743+03:00",
+                        "node":  "v24.13.0",
+                        "npm":  "11.6.2",
+                        "java":  "Picked up JAVA_TOOL_OPTIONS: -Xms256m -Xmx1200m -XX:ActiveProcessorCount=2\r\nopenjdk version \"21.0.13\" 2026-10-20 LTS\r\nOpenJDK Runtime Environment Temurin-21.0.13+9 (build 21.0.13+9-LTS)\r\nOpenJDK 64-Bit Server VM Temurin-21.0.13+9 (build 21.0.13+9-LTS, mixed mode, sharing)",
+                        "maven":  "Apache Maven 3.10.0 (c43a36b8d67be7e0805a411bc0898af1a51f5472)",
+                        "springBoot":  "4.1.2",
+                        "postgres":  "17.11",
+                        "workerPollIntervalMs":  50,
+                        "dockerClient":  "29.2.1",
+                        "dockerServer":  "29.2.1",
+                        "compose":  "5.0.2",
+                        "dockerEngineLogicalCpus":  8,
+                        "dockerEngineMemoryBytes":  33187651584,
+                        "hostOperatingSystem":  "Майкрософт Windows 11 Домашняя для одного языка",
+                        "resourceLimits":  [
+                                               {
+                                                   "service":  "postgres",
+                                                   "containerId":  "94feea055350624376785ce023d53d14d258a48e420f1e433d71ca937ec8335f",
+                                                   "hostNanoCpus":  200000000,
+                                                   "hostCpuCores":  0.2,
+                                                   "hostMemoryBytes":  1610612736,
+                                                   "hostMemoryMiB":  1536,
+                                                   "cgroupCpuMax":  "20000 100000",
+                                                   "cgroupCpuCores":  0.2,
+                                                   "cgroupMemoryMaxBytes":  1610612736
+                                               },
+                                               {
+                                                   "service":  "backend",
+                                                   "containerId":  "ab11989f7b5705ccda9f517c31e734bb62019fe0bf210c43c738e8e141d3151b",
+                                                   "hostNanoCpus":  1700000000,
+                                                   "hostCpuCores":  1.7,
+                                                   "hostMemoryBytes":  2415919104,
+                                                   "hostMemoryMiB":  2304,
+                                                   "cgroupCpuMax":  "170000 100000",
+                                                   "cgroupCpuCores":  1.7,
+                                                   "cgroupMemoryMaxBytes":  2415919104
+                                               },
+                                               {
+                                                   "service":  "emulator",
+                                                   "containerId":  "3e81b6156c264033ff81a47235560358d2ce59189c1b417af5404e693d86655c",
+                                                   "hostNanoCpus":  100000000,
+                                                   "hostCpuCores":  0.1,
+                                                   "hostMemoryBytes":  268435456,
+                                                   "hostMemoryMiB":  256,
+                                                   "cgroupCpuMax":  "10000 100000",
+                                                   "cgroupCpuCores":  0.1,
+                                                   "cgroupMemoryMaxBytes":  268435456
+                                               }
+                                           ],
+                        "resourceTotals":  {
+                                               "cpuCores":  2,
+                                               "cgroupCpuCores":  2,
+                                               "memoryBytes":  4294967296,
+                                               "cgroupMemoryBytes":  4294967296,
+                                               "memoryMiB":  4096
+                                           },
+                        "containerImageIds":  {
+                                                  "emulator":  "sha256:a34e0b3478e05505f69730bdd324afe4b5735ff7cd84d831d7f190c600188271",
+                                                  "backend":  "sha256:17da5eaeca96dcfdbfd3491174f4265870da84b153f52c8ac2823790e304bdb0",
+                                                  "postgres":  "sha256:18cfe3ef5e6815560c98237d6216d1e5119702fb0f3894c8785dd58b8bbe5d73"
+                                              },
+                        "loadGenerator":  "Node.js on host; excluded from container quotas",
+                        "browser":  "Not running during the measured profile",
+                        "emulatorFaultModes":  {
+                                                   "unavailable":  false,
+                                                   "dropAfterSave":  false,
+                                                   "duplicateResult":  false,
+                                                   "delayMs":  0
+                                               }
+                    }
+}

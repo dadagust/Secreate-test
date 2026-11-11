@@ -1,0 +1,405 @@
+{
+  "profile": {
+    "warmupSeconds": 30,
+    "measurementSeconds": 120,
+    "clients": 20,
+    "requestDeadlineSeconds": 5,
+    "clientBehavior": "one request in flight per client; next request starts after prior completion",
+    "measuredStart": "2026-11-11T13:27:41.350Z",
+    "measuredEnd": "2026-11-11T13:29:41.695Z",
+    "warmup": {
+      "requestedSeconds": 30,
+      "requestCount": 760
+    },
+    "measurement": {
+      "requestedSeconds": 120,
+      "requestCount": 3135
+    },
+    "workerPollIntervalMs": 1000,
+    "workerMaxItemsPerTick": 1
+  },
+  "operations": {
+    "list": {
+      "requests": 783,
+      "successful": 783,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 708.1638740000053,
+      "p95MsAllAttempts": 1187.4556120000052,
+      "p95MsSuccessful": 1187.4556120000052,
+      "p99MsAllAttempts": 1418.6592040000032,
+      "meanMsAllAttempts": 746.8513173678156,
+      "maxMsAllAttempts": 2092.671927000003,
+      "statusCodes": {
+        "200": 783
+      },
+      "errorReasons": {}
+    },
+    "detail": {
+      "requests": 784,
+      "successful": 784,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 705.5673959999986,
+      "p95MsAllAttempts": 1193.7465950000042,
+      "p95MsSuccessful": 1193.7465950000042,
+      "p99MsAllAttempts": 1410.91442500001,
+      "meanMsAllAttempts": 740.015813510203,
+      "maxMsAllAttempts": 1814.1030450000035,
+      "statusCodes": {
+        "200": 784
+      },
+      "errorReasons": {}
+    },
+    "create": {
+      "requests": 785,
+      "successful": 785,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 794.9536769999977,
+      "p95MsAllAttempts": 1212.0751279999968,
+      "p95MsSuccessful": 1212.0751279999968,
+      "p99MsAllAttempts": 1408.4256929999974,
+      "meanMsAllAttempts": 791.8965598764323,
+      "maxMsAllAttempts": 1902.6036400000012,
+      "statusCodes": {
+        "200": 785
+      },
+      "errorReasons": {}
+    },
+    "patch": {
+      "requests": 783,
+      "successful": 783,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 792.8325570000015,
+      "p95MsAllAttempts": 1208.4008729999987,
+      "p95MsSuccessful": 1208.4008729999987,
+      "p99MsAllAttempts": 1404.990598000004,
+      "meanMsAllAttempts": 789.5173669284803,
+      "maxMsAllAttempts": 1720.8668590000016,
+      "statusCodes": {
+        "200": 783
+      },
+      "errorReasons": {}
+    }
+  },
+  "warmupOperations": {
+    "list": {
+      "requests": 191,
+      "successful": 191,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 795.5421719999997,
+      "p95MsAllAttempts": 1305.1082920000008,
+      "p95MsSuccessful": 1305.1082920000008,
+      "p99MsAllAttempts": 1493.511735,
+      "meanMsAllAttempts": 804.8432599738218,
+      "maxMsAllAttempts": 1600.6150810000008,
+      "statusCodes": {
+        "200": 191
+      },
+      "errorReasons": {}
+    },
+    "detail": {
+      "requests": 189,
+      "successful": 189,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 710.500458999999,
+      "p95MsAllAttempts": 1208.5187770000011,
+      "p95MsSuccessful": 1208.5187770000011,
+      "p99MsAllAttempts": 1498.2273489999989,
+      "meanMsAllAttempts": 750.4021679629631,
+      "maxMsAllAttempts": 1585.1223979999995,
+      "statusCodes": {
+        "200": 189
+      },
+      "errorReasons": {}
+    },
+    "create": {
+      "requests": 190,
+      "successful": 190,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 741.953193,
+      "p95MsAllAttempts": 1199.675389,
+      "p95MsSuccessful": 1199.675389,
+      "p99MsAllAttempts": 1309.0830559999995,
+      "meanMsAllAttempts": 773.7858126842106,
+      "maxMsAllAttempts": 1318.4961699999985,
+      "statusCodes": {
+        "200": 190
+      },
+      "errorReasons": {}
+    },
+    "patch": {
+      "requests": 190,
+      "successful": 190,
+      "errors": 0,
+      "timeouts": 0,
+      "businessRejections": 0,
+      "businessRejectionReasons": {},
+      "p50MsAllAttempts": 801.2703589999983,
+      "p95MsAllAttempts": 1319.0018369999998,
+      "p95MsSuccessful": 1319.0018369999998,
+      "p99MsAllAttempts": 1492.335030000002,
+      "meanMsAllAttempts": 844.0020736578939,
+      "maxMsAllAttempts": 1534.62301,
+      "statusCodes": {
+        "200": 190
+      },
+      "errorReasons": {}
+    }
+  },
+  "combined": {
+    "reads": {
+      "requests": 1567,
+      "successful": 1567,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 706.7594450000033,
+      "p95MsAllAttempts": 1190.5992560000013,
+      "p95MsSuccessful": 1190.5992560000013,
+      "p99MsAllAttempts": 1411.8187150000012,
+      "meanMsAllAttempts": 743.4313843592855
+    },
+    "changes": {
+      "requests": 1568,
+      "successful": 1568,
+      "errors": 0,
+      "timeouts": 0,
+      "p50MsAllAttempts": 793.5034100000048,
+      "p95MsAllAttempts": 1209.766445000001,
+      "p95MsSuccessful": 1209.766445000001,
+      "p99MsAllAttempts": 1404.990598000004,
+      "meanMsAllAttempts": 790.7084807448972
+    }
+  },
+  "externalExecution": {
+    "taskCreation": {
+      "warmupCreates": 190,
+      "measurementCreates": 785,
+      "warmupArrivalPerSecond": 6.333333333333333,
+      "measurementArrivalPerSecond": 6.541666666666667
+    },
+    "queue": {
+      "beforeWarmup": {
+        "totalReady": 0,
+        "ready": 0,
+        "leased": 0,
+        "scheduled": 0
+      },
+      "atMeasurementStart": {
+        "totalReady": 167,
+        "ready": 167,
+        "leased": 0,
+        "scheduled": 0
+      },
+      "atMeasurementEnd": {
+        "totalReady": 856,
+        "ready": 856,
+        "leased": 0,
+        "scheduled": 0
+      },
+      "afterDrain": {
+        "totalReady": 735,
+        "ready": 735,
+        "leased": 0,
+        "scheduled": 0
+      }
+    },
+    "measurementBoundary": {
+      "accepted": 785,
+      "externallyExecuted": 0,
+      "unfinished": 785,
+      "externallyNotExecuted": 785,
+      "executedButLocallyUnfinished": 0,
+      "externalLatencyMs": []
+    },
+    "afterDrain": {
+      "accepted": 785,
+      "externallyExecuted": 50,
+      "unfinished": 735,
+      "externallyNotExecuted": 735,
+      "executedButLocallyUnfinished": 0,
+      "externalLatencyMs": [
+        192951.513,
+        193766.928,
+        194600.139,
+        195612.447,
+        196627.158,
+        197335.033,
+        198255.806,
+        199187.65,
+        200106.05,
+        201115.559,
+        201520.995,
+        201950.332,
+        202867.134,
+        203881.259,
+        204805.299,
+        205817.2,
+        206428.84,
+        207347.184,
+        208166.506,
+        209181.193,
+        210096.648,
+        210811.294,
+        211823.075,
+        212443.712,
+        213248.207,
+        214262.209,
+        215197.882,
+        216202.335,
+        217206.784,
+        217645.795,
+        218357.09,
+        219276.772,
+        219680.461,
+        220400.276,
+        221335.852,
+        222336.208,
+        223062.731,
+        223975.662,
+        224992.342,
+        225904.804,
+        226821.166,
+        227649.801,
+        228171.694,
+        229186.884,
+        230194.866,
+        231113.865,
+        232125.685,
+        232551.329,
+        233368.445,
+        234279.762
+      ],
+      "drainSeconds": 120,
+      "actualDrainSeconds": 123.5
+    },
+    "deliveryRates": {
+      "duringMeasurementPerSecond": 0.8,
+      "duringDrainPerSecond": 0.979757085020243
+    },
+    "latencyFromTaskCreatedToExecutorCommitMs": {
+      "samples": 50,
+      "p50": 213248.207,
+      "p95": 232551.329,
+      "mean": 213704.95722000004
+    }
+  },
+  "runtimeTimings": {
+    "worker": {
+      "claim": {
+        "samples": 249,
+        "p50Us": 3591,
+        "p95Us": 107624,
+        "meanUs": 31390.606425702812
+      },
+      "http": {
+        "samples": 249,
+        "p50Us": 18067,
+        "p95Us": 202234,
+        "meanUs": 72983.18875502008
+      },
+      "apply": {
+        "samples": 249,
+        "p50Us": 2437,
+        "p95Us": 100776,
+        "meanUs": 21989.630522088355
+      }
+    },
+    "emulator": {
+      "connection": {
+        "samples": 240,
+        "p50Us": 5951,
+        "p95Us": 22699,
+        "meanUs": 12542.625
+      },
+      "faultModeLock": {
+        "samples": 240,
+        "p50Us": 1570,
+        "p95Us": 2268,
+        "meanUs": 3475.9083333333333
+      },
+      "executorTransaction": {
+        "samples": 240,
+        "p50Us": 3909,
+        "p95Us": 86758,
+        "meanUs": 12344.658333333333
+      }
+    }
+  },
+  "validity": {
+    "passed": true,
+    "failures": [],
+    "measuredRequests": 3135,
+    "businessRejections": 0,
+    "businessRejectionRate": 0,
+    "maxBusinessRejectionRate": 0.01,
+    "externalLatencySamples": 50
+  },
+  "environment": {
+    "runId": "4b5b08cb0984403b989e3f0af3bdee8c",
+    "composeProject": "nf08-linux-20261111-132426-4b5b08cb",
+    "platform": "linux",
+    "kernel": "6.6.87.2-microsoft-standard-WSL2",
+    "node": "v24.22.1",
+    "npm": "11.12.1",
+    "maven": "Apache Maven 3.10.0 (c43a36b8d67be7e0805a411bc0898af1a51f5472)",
+    "springBoot": "4.1.2",
+    "docker": "29.2.1",
+    "compose": "5.7.0",
+    "dockerEngineResources": "8|33187651584",
+    "java": "Picked up JAVA_TOOL_OPTIONS: -Xms256m -Xmx1200m -XX:ActiveProcessorCount=2\nopenjdk version \"21.0.13\" 2026-10-20 LTS\nOpenJDK Runtime Environment Temurin-21.0.13+9 (build 21.0.13+9-LTS)\nOpenJDK 64-Bit Server VM Temurin-21.0.13+9 (build 21.0.13+9-LTS, mixed mode, sharing)",
+    "postgres": "17.11",
+    "workerPollIntervalMs": 1000,
+    "workerMaxItemsPerTick": 1,
+    "maxBusinessRejectionRate": 0.01,
+    "resourceLimits": [
+      {
+        "service": "postgres",
+        "hostNanoCpus": 200000000,
+        "hostMemoryBytes": 1610612736,
+        "cgroupCpuMax": "20000 100000",
+        "cgroupMemoryMaxBytes": 1610612736
+      },
+      {
+        "service": "backend",
+        "hostNanoCpus": 1700000000,
+        "hostMemoryBytes": 2415919104,
+        "cgroupCpuMax": "170000 100000",
+        "cgroupMemoryMaxBytes": 2415919104
+      },
+      {
+        "service": "emulator",
+        "hostNanoCpus": 100000000,
+        "hostMemoryBytes": 268435456,
+        "cgroupCpuMax": "10000 100000",
+        "cgroupMemoryMaxBytes": 268435456
+      }
+    ],
+    "emulatorFaultModes": {
+      "unavailable": false,
+      "dropAfterSave": false,
+      "duplicateResult": false,
+      "delayMs": 0
+    },
+    "loadGenerator": "Node.js outside container quotas"
+  }
+}

@@ -51,6 +51,7 @@ export default defineConfig({
         items: [
           { text: 'Обзор проекта', link: '/project/overview' },
           { text: 'Архитектура', link: '/project/architecture' },
+          { text: 'Приёмка спецификации', link: '/project/acceptance' },
           { text: 'Frontend', link: '/project/frontend' },
           { text: 'Модель данных', link: '/project/data-model' },
           { text: 'Конфигурация', link: '/project/configuration' },

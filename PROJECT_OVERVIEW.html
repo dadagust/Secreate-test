@@ -1,6 +1,6 @@
 <!--
 GENERATED FILE — DO NOT EDIT MANUALLY.
-Canonical source: PROJECT_OVERVIEW.md
+Canonical source: docs/project/overview-source.txt
 Regenerate using the project overview build command: npm run overview:build
 -->
 <!doctype html>
@@ -100,7 +100,7 @@ Regenerate using the project overview build command: npm run overview:build
 <body>
   <a class="skip" href="#content">Перейти к содержимому</a>
   <header class="topbar">
-    <div class="brand">Secreate-test<small>Обзор проекта · источник: <a href="PROJECT_OVERVIEW.md">PROJECT_OVERVIEW.md</a></small></div>
+    <div class="brand">Secreate-test<small>Обзор проекта · источник: <a href="docs/.vitepress/dist/project/overview.html">PROJECT_OVERVIEW.md</a></small></div>
     <button type="button" class="menu-toggle" id="menu-toggle" aria-controls="toc" aria-expanded="true">Разделы</button>
     <div class="search" role="search">
       <input id="overview-search" type="search" placeholder="Поиск по обзору (/)" aria-label="Поиск по обзору" aria-describedby="search-status" autocomplete="off">
@@ -111,26 +111,27 @@ Regenerate using the project overview build command: npm run overview:build
   <div class="layout">
     <nav class="toc" id="toc" aria-label="Разделы обзора">
       <ul>
-          <li><a href="#целевой-стек" data-section="целевой-стек">Целевой стек</a></li>
-          <li><a href="#расположение" data-section="расположение">Расположение</a></li>
+          <li><a href="#предсдаточная-сверка-профиля-и-seed" data-section="предсдаточная-сверка-профиля-и-seed">Предсдаточная сверка профиля и seed</a></li>
+          <li><a href="#предсдаточные-регрессии" data-section="предсдаточные-регрессии">Предсдаточные регрессии</a></li>
       </ul>
     </nav>
     <main id="content" tabindex="-1">
       <h1>Обзор проекта</h1>
-      <div class="intro"><p>Репозиторий содержит агентскую инфраструктуру, Spring Boot API и React/Vite интерфейс реестра, доставки и операторской сверки. TASK-001 завершена; нагрузочный профиль NF08 и финальная сверка описаны в <a href="docs/project/performance.md">отчёте</a>.</p></div>
+      <div class="intro"><p>Система принимает задания инициаторов, надёжно доставляет их локальному эмулятору и позволяет оператору разбирать расхождения. Команды запуска Windows, Linux и Docker собраны в README; штатный воркер обрабатывает до 16 записей за тик и прекращает новые захваты после прерывания потока, сохраняя текущую попытку через lease/retry.</p></div>
       <p id="search-status" class="status" role="status" aria-live="polite"></p>
 
-      <section class="card" id="целевой-стек" aria-labelledby="целевой-стек-title">
-        <h2 id="целевой-стек-title">Целевой стек</h2>
-        <p>Java 21 и Spring Boot с Maven Wrapper в backend/, React и TypeScript с Vite в frontend/, PostgreSQL через Docker Compose.</p>
+      <section class="card" id="предсдаточная-сверка-профиля-и-seed" aria-labelledby="предсдаточная-сверка-профиля-и-seed-title">
+        <h2 id="предсдаточная-сверка-профиля-и-seed-title">Предсдаточная сверка профиля и seed</h2>
+        <p>Исправленный стандартный NF08 выполнен 2026-11-11 на 5000 фикстурах, 20 клиентах, с прогревом 30 с, измерением 120 с, polling 1000 мс и суммарными квотами 2 CPU/4096 MiB. Валидатор подтвердил 2547 из 2547 успешных HTTP 200, p95 чтений 1504,2 мс, p95 изменений 1595,2 мс и 0 ошибок; на границе было 394 незавершённых измерительных задания, внешне исполнены 244 из 638. После drain 52.799 с исполнены все 638 и очередь стала пустой. Старый TASK-007 запуск за 57.005 с и его JSON сохранены, но его выборка списка могла включать неполные страницы, поэтому p95 списка напрямую несопоставим. Подробности: docs/project/nf08-presale-2026-11-11.md.</p>
+<p>Демозаписи определяются стабильными ключами <code>secreate-demo-v1-&lt;slug&gt;</code>, а не совпадением владельца и заголовка; режим эмулятора фиксируется до idempotent POST. Регрессии проверяются командами <code>node --test scripts/demo-seed-identity.test.mjs scripts/performance/nf08-profile-validation.test.mjs scripts/performance/nf08-counts.test.mjs</code> и <code>&amp; .\scripts\check-demo-seed.ps1</code> на изолированном Compose project.</p>
       </section>
 
-      <section class="card" id="расположение" aria-labelledby="расположение-title">
-        <h2 id="расположение-title">Расположение</h2>
-        <ul><li>'AGENTS.md' и пакетные инструкции — правила работы.</li><li>'prompts/', '.agents/skills/', '.claude/', '.codex/' — агентские материалы.</li><li>'backlog/tasks/' — задачи; 'docs/specs/' — спецификации.</li><li>'docs/' — документация; 'scripts/' — локальные проверки и генерация.</li></ul>
+      <section class="card" id="предсдаточные-регрессии" aria-labelledby="предсдаточные-регрессии-title">
+        <h2 id="предсдаточные-регрессии-title">Предсдаточные регрессии</h2>
+        <p>DeliveryWorker проверяет interrupt перед каждым захватом. Если поток прерван во время HTTP, текущая попытка записывается через штатную lease/retry-семантику, флаг восстанавливается, а следующие записи остаются незахваченными до нового тика. PostgreSQL-регрессии для прерывания до claim и во время HTTP включены в Maven verify. Для чисто распакованного Linux-архива Maven Wrapper запускается через <code>sh ./mvnw -B -ntp verify</code> из <code>backend/</code>; PowerShell использует <code>.\mvnw.cmd</code>.</p>
       </section>
       <footer>
-        <p>Сгенерировано из <a href="PROJECT_OVERVIEW.md">PROJECT_OVERVIEW.md</a> командой <code>npm run overview:build</code>. Не редактируйте этот файл вручную; <code>npm run overview:check</code> проверяет его актуальность.</p>
+        <p>Ссылки на документы открывают их HTML-страницы из <code>docs/.vitepress/dist/</code>. Если папки ещё нет, сначала соберите документацию командой <code>npm run docs:build</code>. Этот обзор сгенерирован из <code>docs/project/overview-source.txt</code>; используйте <code>npm run overview:build</code> для обновления и <code>npm run overview:check</code> для проверки.</p>
       </footer>
     </main>
   </div>
