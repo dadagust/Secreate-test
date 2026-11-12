@@ -26,7 +26,13 @@ class OperatorApi {
         var rows=db.queryForList("select t.id,t.owner_name,t.title,t.assignee,t.local_version,t.status as business_status,t.result_version,o.state as delivery_state,o.attempts,o.next_attempt,o.lease_until,o.recovery_pending,o.failure_reason from tasks t join outbox o on o.task_id=t.id join operator_scope s on s.owner_name=t.owner_name where t.id=? and s.operator_name=?",id,principal.getName());
         if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         var result=new LinkedHashMap<String,Object>(rows.getFirst());
-        result.put("history",db.queryForList("select id,event,actor,created_at from exchange_events where task_id=? order by id",id));
+        var history=new ArrayList<Map<String,Object>>();
+        for(var row:db.queryForList("select id,task_id,event,actor,created_at,details::text as details from exchange_events where task_id=? order by id",id)) {
+            var event=new LinkedHashMap<String,Object>(row);
+            event.put("details",AuditEvents.parse(event.get("details")));
+            history.add(event);
+        }
+        result.put("history",history);
         result.put("conflicts",db.queryForList("select * from result_conflicts where task_id=? order by id",id));
         result.put("reconciliations",db.queryForList("select * from reconciliations where task_id=? order by observed_at,id",id));
         result.put("assignmentHistory",db.queryForList("select * from assignment_audit where task_id=? order by id",id));

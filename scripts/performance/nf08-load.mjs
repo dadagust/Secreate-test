@@ -6,7 +6,7 @@ import { summarizeRuntimeMetrics } from './runtime-metrics.mjs';
 import { writeNf08Report } from './nf08-report.mjs';
 import { validateNf08ApiResponse } from './nf08-response-validation.mjs';
 import { classifyNf08HttpFailure } from './nf08-http-errors.mjs';
-import { addNf08Metric, createNf08Metrics, summarizeNf08Metric } from './nf08-metrics.mjs';
+import { addNf08Metric, createNf08Metrics, summarizeNf08OperationBuckets } from './nf08-metrics.mjs';
 
 const config = {
   api: process.env.NF08_API_URL,
@@ -228,7 +228,7 @@ while (Date.now() < drainDeadline && totalUnfinished(afterDrain) > 0) {
 }
 const drainElapsedSeconds = Math.max(0, (Date.now() - drainStartedAt) / 1000);
 
-const operations = Object.fromEntries(Object.entries(metricBuckets.measurement).map(([name, metric]) => [name, summarizeNf08Metric(metric)]));
+const operations = summarizeNf08OperationBuckets(metricBuckets.measurement);
 let runtimeTimings = null;
 let runtimeTimingsError = null;
 try {
@@ -274,7 +274,7 @@ const report = {
     pageRange: [pages[0], pages.at(-1)],
     itemsPerPage: 20,
   }])),
-  warmupOperations: Object.fromEntries(Object.entries(metricBuckets.warmup).map(([name, metric]) => [name, summarizeMetric(metric)])),
+  warmupOperations: summarizeNf08OperationBuckets(metricBuckets.warmup),
   combined,
   externalExecution: {
     taskCreation: {

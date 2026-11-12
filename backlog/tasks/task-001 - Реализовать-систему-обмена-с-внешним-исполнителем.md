@@ -4,7 +4,7 @@ title: Реализовать систему обмена с внешним ис
 status: Done
 assignee: []
 created_date: '2026-11-10 13:17'
-updated_date: '2026-11-11 12:17'
+updated_date: '2026-11-11 23:56'
 labels: []
 dependencies: []
 ordinal: 1000
@@ -55,4 +55,24 @@ ordinal: 1000
 Повторная приёмка в TASK-006 проверяет все требования и исправляет отчёт NF08; закрытие приостановлено.
 
 Повторная сверка TASK-006: матрица docs/project/acceptance.md подтверждает требования фактическими тестами. NF08 пройден по API-порогам; при стандартном polling 1000 мс зафиксирована большая очередь, пределы наблюдения описаны в performance.md. Linux проверен в контейнерах Docker Desktop.
+
+Повторная сверка 2026-11-11 нашла пробел NF05: автоматическое применение результата пишет только RESULT_* event с actor/task/time, но не сохраняет прежний и новый бизнес-статус и версии. Assignment audit и reconciliation snapshots этого не заменяют. Критерий #3 снят, реализация отслеживается в TASK-001.01; parent возвращён в In Progress.
+
+Критерий #3 закрыт после TASK-001.01: V8 JSONB-аудит переходов добавлен, операторская область доступа сохранена, API и карточка показывают содержимое истории. Maven verify 37/37, frontend lint/styles/build/session, изолированные browser/test:task004, Linux-container lifecycle с PostgreSQL restart и check:agents 561/561 прошли. Матрица и историческое ограничение старых событий описаны в docs/project/acceptance.md.
+
+Повторная сверка TASK-011 выявила нарушения D04 и неработающую штатную сборку NF08-отчёта. Задача повторно открыта до исправления и повторных проверок в TASK-001.02.
+
+Финальная сверка 2026-11-12: новые действия удовлетворяют NF05, но существующие события до V8 после миграции имеют пустые details. Старые/новые значения невозможно восстановить из сохранённых данных без выдумывания аудита; критерий #3 снят до проверки наличия авторитетного источника исторических изменений.
+
+NF05 criterion #3 is completed through TASK-001.03: migration V9 backfills old audit details only from verified sources and explicitly marks unavailable payloads; PostgreSQL V7-to-V9 regression, fixture guard, full verify (43/43), Node checks (20/20), check:agents (561/561), and a valid standard NF08 rerun (3218/3218 requests, p95 reads/changes 1186.4/1207.9 ms, queue drained) passed. The persistent review database migrated backend-only with its volume and existing rows preserved. docs/specs/04-system-integration.md is unchanged.
 <!-- SECTION:NOTES:END -->
+
+## Final Summary
+
+<!-- SECTION:FINAL_SUMMARY:BEGIN -->
+Повторно подтверждено в TASK-001.02: D04 lock-wait регрессии прошли на PostgreSQL; NF08 повторён на корректных полных страницах, 2830/2830 запросов успешны, p95 чтений/изменений ниже порогов, JSON сохранён; docs, frontend polling, agent checks и VitePress проверены.
+
+Повторный аудит 2026-11-12 оставил TASK-001 в In Progress: текущие события NF05 полны, но исторические строки до V8 не содержат детали изменения, а надёжный источник для backfill не подтверждён. Maven 42/42, NF08 валиден, frontend/session и check:agents прошли; точная оговорка в docs/project/acceptance.md.
+
+TASK-001 closed after child TASK-001.03 completed NF05 historic audit backfill and final verification. All nine acceptance criteria are checked. The latest standard NF08 passed and its JSON/report are retained. No commit or push.
+<!-- SECTION:FINAL_SUMMARY:END -->

@@ -45,7 +45,7 @@ function Get-OutboxSnapshot([string]$Id) {
 }
 
 function Get-TaskHistorySignature([string]$Id) {
-    return Invoke-Sql "select coalesce(string_agg(id::text || '|' || event || '|' || actor || '|' || created_at::text, ';' order by id),'') from exchange_events where task_id='$Id'"
+    return Invoke-Sql "select coalesce(string_agg(id::text || '|' || event || '|' || actor || '|' || created_at::text || '|' || details::text, ';' order by id),'') from exchange_events where task_id='$Id'"
 }
 
 function Get-TaskAuditSignature([string]$Id) {
@@ -274,6 +274,9 @@ try {
     $dbAfterBackendRestart = Get-OutboxSnapshot $backendInterrupted
     if ($dbAfterBackendRestart.state -ne 'DONE' -or [int]$dbAfterBackendRestart.attempts -ne 2 -or $dbAfterBackendRestart.lease_token) { throw 'После автоматического повтора PostgreSQL не показывает завершённую вторую попытку.' }
     if (-not @($recovered.history | Where-Object event -eq 'ATTEMPT_1').Count) { throw 'После перезапуска потерялась история первой попытки.' }
+    $attemptAfter = Invoke-Sql "select details->>'attemptsAfter' from exchange_events where task_id='$backendInterrupted' and event='ATTEMPT_2' order by id desc limit 1"
+    $appliedStatus = Invoke-Sql "select details->>'newBusinessStatus' from exchange_events where task_id='$backendInterrupted' and event='RESULT_APPLY' order by id desc limit 1"
+    if ($attemptAfter -ne '2' -or $appliedStatus -ne 'SUCCEEDED') { throw 'После backend restart в JSONB-аудите отсутствуют данные второй попытки или применённого результата.' }
     $externalAfterBackendRestart = Get-External $backendInterrupted
     if ($externalAfterBackendRestart.operationId -ne $backendInterrupted -or $externalAfterBackendRestart.executions -ne 1) { throw 'Независимый GET изменил operationId или показал больше одного исполнения после backend restart.' }
     Write-Output "Backend restart after lease expiry: operationId=$backendInterrupted, attempts=$($dbAfterBackendRestart.attempts), leaseExpired=$($backendLeaseDeadline.ToString('o')), executions=$($externalAfterBackendRestart.executions)"
@@ -287,6 +290,8 @@ try {
     $historyBeforePostgresRestart = Get-TaskHistorySignature $postgresInterrupted
     $auditBeforePostgresRestart = Get-TaskAuditSignature $postgresInterrupted
     if (-not $historyBeforePostgresRestart.Contains('ATTEMPT_1') -or -not $historyBeforePostgresRestart.Contains('AMBIGUOUS_RETRY')) { throw 'До PostgreSQL restart не сохранены конкретные события первой попытки и временного сбоя.' }
+    $retryReason = Invoke-Sql "select details->>'reason' from exchange_events where task_id='$postgresInterrupted' and event='AMBIGUOUS_RETRY' order by id desc limit 1"
+    if ($retryReason -ne 'TEMPORARY_DELIVERY_FAILURE') { throw 'До PostgreSQL restart событие временного сбоя не содержит JSONB-причину.' }
     if (-not $auditBeforePostgresRestart.Contains('operator|')) { throw 'До PostgreSQL restart не сохранена конкретная запись назначения оператора.' }
     $beforeTasks = [int](Invoke-Sql 'select count(*) from tasks')
     $beforeEvents = [int](Invoke-Sql 'select count(*) from exchange_events')
@@ -322,11 +327,13 @@ try {
     if (-not $historyAfterPostgresRestart.StartsWith($historyBeforePostgresRestart,[StringComparison]::Ordinal)) { throw 'Конкретные строки истории до PostgreSQL restart не сохранились в прежнем порядке.' }
     if ($auditAfterPostgresRestart -ne $auditBeforePostgresRestart) { throw 'Конкретная запись аудита изменения ответственного изменилась или пропала после PostgreSQL restart.' }
     if (-not @($resumed.history | Where-Object event -eq 'ATTEMPT_1').Count -or -not @($resumed.history | Where-Object event -eq 'ATTEMPT_2').Count) { throw 'После PostgreSQL restart API не отдает сохранённую и новую попытки.' }
+    $appliedStatusAfterDb = Invoke-Sql "select details->>'newBusinessStatus' from exchange_events where task_id='$postgresInterrupted' and event='RESULT_APPLY' order by id desc limit 1"
+    if ($appliedStatusAfterDb -ne 'SUCCEEDED') { throw 'После PostgreSQL restart переход результата отсутствует в JSONB-аудите.' }
     if (-not @($resumed.assignmentHistory | Where-Object { $_.actor -eq 'operator' -and $_.new_assignee -eq 'operator' }).Count) { throw 'Аудит оператора не пережил restart PostgreSQL.' }
     $externalAfterDb = Get-External $postgresInterrupted
     if ($externalAfterDb.executions -ne 1 -or $externalAfterDb.operationId -ne $postgresInterrupted) { throw 'Внешний operationId/count изменился после восстановления PostgreSQL.' }
     $migrationVersion = Invoke-Sql "select max(version) from flyway_schema_history where success"
-    if ([int]$migrationVersion -ne 7) { throw "На чистой БД применена неожиданная версия схемы: $migrationVersion." }
+    if ([int]$migrationVersion -ne 8) { throw "На чистой БД применена неожиданная версия схемы: $migrationVersion." }
     Write-Output "PostgreSQL volume restart: operationId=$postgresInterrupted, tasks=$afterTasks, events=$afterEvents, assignmentAudits=$afterAudits, executions=$($externalAfterDb.executions)"
 
     Stop-JavaProcess $apiProcess; $script:apiProcess = $null

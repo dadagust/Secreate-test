@@ -1,5 +1,6 @@
 const { chromium } = require('playwright')
 const assert = require('node:assert/strict')
+const baseUrl=process.env.FRONTEND_TEST_BASE_URL||'http://127.0.0.1:5173/'
 
 function deferred() { let resolve; const promise=new Promise(r=>{resolve=r}); return {promise,resolve} }
 function row(id,title,status='PENDING') { return {id,title,owner_name:id==='bob-id'?'bob':'alice',assignee:null,local_version:0,business_status:status,delivery_state:'READY',created_at:'2026-01-01T00:00:00Z',failure_reason:null} }
@@ -16,7 +17,7 @@ async function run() {
     if(url.pathname==='/api/tasks'){await route.fulfill({json:{items:[user==='bob'?row('bob-id','Задание Боба'):row('alice-id','Секрет Алисы')],page:0,hasNext:false}});return}
     await route.fulfill({status:404,json:{}})
    })
-   await page.goto('http://127.0.0.1:5173/');await login(page,'alice','demo-alice')
+    await page.goto(baseUrl);await login(page,'alice','demo-alice')
    await page.getByLabel('Название задания').fill('черновик Алисы')
    await page.getByRole('button',{name:'Секрет Алисы'}).filter({visible:true}).click();await entered.promise
    await page.getByRole('button',{name:'Выйти'}).click();await login(page,'bob','demo-bob')
@@ -38,7 +39,7 @@ async function run() {
     if(status==='PENDING'){entered.resolve();await release.promise;await route.fulfill(oldError?{status:500,json:{message:'Старая ошибка'}}:{json:{items:[row('old','Старый фильтр')],page:0,hasNext:false}});delivered.resolve();return}
     await route.fulfill({json:{items:[status==='SUCCEEDED'?row('new','Новый фильтр','SUCCEEDED'):row('initial','Первый список')],page:0,hasNext:false}})
    })
-   await page.goto('http://127.0.0.1:5173/');await login(page,'alice','demo-alice')
+    await page.goto(baseUrl);await login(page,'alice','demo-alice')
    await page.getByRole('button',{name:'Первый список'}).filter({visible:true}).waitFor()
    await page.getByLabel('Статус исполнения').selectOption('PENDING');await entered.promise
    await page.getByLabel('Статус исполнения').selectOption('SUCCEEDED')
@@ -52,6 +53,52 @@ async function run() {
    assert.equal(await page.getByRole('alert').count(),0)
    await context.close()
   }
+   {
+    const context=await browser.newContext();const page=await context.newPage()
+    await page.clock.install()
+    const initialListStarted=deferred(), releaseInitialLists=deferred(), initialDetailStarted=deferred(), releaseInitialDetails=deferred()
+    let allowListPoll=false, allowDetailPoll=false, listCalls=0, detailCalls=0
+    await context.route('**/api/**',async route=>{
+     const url=new URL(route.request().url()), request=route.request()
+     if(url.pathname==='/api/tasks' && request.method()==='GET') {
+      listCalls++
+      if(listCalls===1 || allowListPoll) {
+       if(listCalls>1) {
+        await route.fulfill({json:{items:[row('poll-id','Актуальное задание')],page:0,hasNext:false}})
+       } else await route.fulfill({json:{items:[],page:0,hasNext:false}})
+       return
+      }
+      initialListStarted.resolve();await releaseInitialLists.promise
+      await route.fulfill({json:{items:[row('poll-id','Устаревший реестр')],page:0,hasNext:false}});return
+     }
+     if(url.pathname==='/api/operator/tasks/poll-id') {
+      detailCalls++
+      if(allowDetailPoll) {
+       await route.fulfill({json:{id:'poll-id',title:'Актуальная карточка',owner_name:'alice',assignee:'alice',local_version:0,business_status:'PENDING',delivery_state:'READY',result_version:0,attempts:1,attempt_limit:5,lease_until:null,recovery_pending:false,failure_reason:null,history:[],conflicts:[],reconciliations:[],assignmentHistory:[]}});return
+      }
+      initialDetailStarted.resolve();await releaseInitialDetails.promise
+      await route.fulfill({json:{id:'poll-id',title:'Устаревшая карточка',owner_name:'alice',assignee:'alice',local_version:0,business_status:'PENDING',delivery_state:'READY',result_version:0,attempts:1,attempt_limit:5,lease_until:null,recovery_pending:false,failure_reason:null,history:[],conflicts:[],reconciliations:[],assignmentHistory:[]}});return
+     }
+     await route.fulfill({status:404,json:{message:'Unexpected test request'}})
+    })
+    await page.goto(baseUrl);await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
+    await initialListStarted.promise
+    allowListPoll=true;await page.clock.fastForward(5000)
+    await page.getByRole('button',{name:'Актуальное задание'}).filter({visible:true}).waitFor()
+    assert.equal(await page.getByRole('button',{name:'Обновить'}).isEnabled(),true,'a successful list poll must clear the initial loading state')
+    await page.getByRole('button',{name:'Актуальное задание'}).filter({visible:true}).click()
+    await initialDetailStarted.promise
+    allowDetailPoll=true;await page.clock.fastForward(5000)
+    await page.getByRole('heading',{name:'Актуальная карточка'}).waitFor()
+    assert.equal(await page.getByRole('button',{name:'Сверить результат'}).isEnabled(),true,'a successful detail poll must enable operator actions')
+    assert.equal(await page.getByRole('button',{name:'Назначить'}).isEnabled(),true)
+    releaseInitialLists.resolve();releaseInitialDetails.resolve()
+    await new Promise(resolve=>setTimeout(resolve,50))
+    assert.equal(await page.getByRole('heading',{name:'Актуальная карточка'}).count(),1,'late detail response must not replace the current card')
+    assert.equal(await page.getByRole('button',{name:'Устаревший реестр'}).count(),0,'late list response must not replace the current registry')
+    console.log('polling foreground loading: delayed initial list/detail do not leave controls disabled')
+    await context.close()
+   }
   {
    const context=await browser.newContext();const page=await context.newPage();const keys=[]
    await context.route('**/api/**',async route=>{
@@ -63,7 +110,7 @@ async function run() {
     if(path==='/api/tasks/created-id'){await route.fulfill({json:{id:'created-id',title:'Повтор создания',status:'PENDING',version:0}});return}
     await route.fulfill({json:{items:[],page:0,hasNext:false}})
    })
-   await page.goto('http://127.0.0.1:5173/');await login(page,'alice','demo-alice')
+    await page.goto(baseUrl);await login(page,'alice','demo-alice')
    await page.getByLabel('Название задания').fill('Повтор создания');await page.getByRole('button',{name:'Создать задание'}).click();await page.getByRole('alert').waitFor()
    await page.getByRole('button',{name:'Создать задание'}).click();await page.getByRole('heading',{name:'Повтор создания'}).waitFor()
    assert.equal(keys.length,2);assert.ok(keys[0]);assert.equal(keys[0],keys[1]);await context.close()
@@ -77,7 +124,7 @@ async function run() {
     if(path==='/api/operator/tasks/retry-id'){await route.fulfill({json:{...item,result_version:0,attempts:1,lease_until:null,recovery_pending:false,history:[],conflicts:[],reconciliations:[],assignmentHistory:[]}});return}
     await route.fulfill({json:{items:[item],page:0,hasNext:false}})
    })
-   await page.goto('http://127.0.0.1:5173/');await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
+     await page.goto(baseUrl);await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
    await page.getByRole('button',{name:'Повтор доставки'}).filter({visible:true}).click()
    await page.getByRole('button',{name:'Повторить доставку'}).click();await page.getByRole('alert').waitFor()
    await page.getByRole('button',{name:'Повторить доставку'}).click()
@@ -88,7 +135,10 @@ async function run() {
    {
     const context=await browser.newContext();const page=await context.newPage();const keys=[];const completed=deferred()
     const item=row('conflict-retry-id','Повтор после конфликта')
-    const history=[{id:41,event:'RESULT_CONFLICT_REQUIRES_REVIEW',actor:'executor',created_at:'2026-01-01T00:00:00Z'}]
+    const history=[
+     {id:40,task_id:item.id,event:'RESULT_APPLY',actor:'executor',created_at:'2026-01-01T00:00:00Z',details:{oldBusinessStatus:'PENDING',newBusinessStatus:'SUCCEEDED',oldResultVersion:0,newResultVersion:1,oldDeliveryState:'READY',newDeliveryState:'DONE',resultDecision:'APPLY'}},
+     {id:41,task_id:item.id,event:'RESULT_CONFLICT_REQUIRES_REVIEW',actor:'executor',created_at:'2026-01-01T00:00:01Z',details:{oldDeliveryState:'READY',newDeliveryState:'REVIEW',reason:'CONTRADICTORY_RESULT_BATCH'}}
+    ]
     await context.route('**/api/**',async route=>{
      const request=route.request(), path=new URL(request.url()).pathname
      if(path.endsWith('/retry')) {
@@ -105,9 +155,10 @@ async function run() {
      }
      await route.fulfill({json:{items:[item],page:0,hasNext:false}})
     })
-    await page.goto('http://127.0.0.1:5173/');await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
+    await page.goto(baseUrl);await page.getByLabel('Пользователь').selectOption('operator');await page.getByLabel('Пароль').fill('demo-operator');await page.getByRole('button',{name:'Войти'}).click()
     await page.getByRole('button',{name:item.title}).filter({visible:true}).click()
     await page.getByText('Противоречивый ответ требует разбора').first().waitFor()
+    await page.getByText('Исполнение: PENDING → SUCCEEDED').waitFor()
     const retry=page.getByRole('button',{name:'Повторить доставку'})
     await retry.click()
     await page.getByText('Противоречивый ответ требует разбора').nth(1).waitFor()
@@ -135,7 +186,7 @@ async function run() {
     }
     await route.fulfill({status:404,json:{message:'Unexpected test request'}})
    })
-   await page.goto('http://127.0.0.1:5173/tasks');await login(page,'alice','demo-alice')
+   await page.goto(`${baseUrl}tasks`);await login(page,'alice','demo-alice')
    assert.ok(await page.evaluate(()=>sessionStorage.length>0),'successful login should survive a reload in this tab')
    await page.getByRole('button',{name:'Задание для проверки маршрута'}).filter({visible:true}).click()
    await page.getByRole('heading',{name:'Карточка до polling'}).waitFor()
@@ -184,7 +235,7 @@ async function run() {
     const path=new URL(route.request().url()).pathname
     await route.fulfill({json:path==='/api/tasks'?{items:[row('long-id',title)],page:0,hasNext:false}:{id:'long-id',title,status:'PENDING',version:0}})
    })
-   await page.goto('http://127.0.0.1:5173/');await login(page,'alice','demo-alice')
+   await page.goto(baseUrl);await login(page,'alice','demo-alice')
    const link=page.getByRole('button',{name:title}).filter({visible:true});await link.waitFor();await link.focus();await page.keyboard.press('Enter')
    await page.getByRole('heading',{name:title}).waitFor()
    assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),true)

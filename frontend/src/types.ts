@@ -1,7 +1,7 @@
 export type User = 'alice' | 'bob' | 'operator'
 export type Task = { id: string; title: string; owner_name: string; assignee: string | null; local_version: number; business_status: string; delivery_state: string; created_at: string; failure_reason: string | null }
 export type Page = { items: Task[]; page: number; hasNext: boolean }
-export type Event = { id: number; event: string; actor: string; created_at: string }
+export type Event = { id: number; task_id: string; event: string; actor: string; created_at: string; details: Record<string, unknown> }
 export type Conflict = { id: number; reason: string; current_version: number; incoming_version: number }
 export type Snapshot = { id: string; outcome: string; observed_at: string; actor: string; decision: string | null; external_status: string | null; external_version: number | null; invalid_reason: string | null }
 export type AssignmentEvent = { id: number; actor: string; old_assignee: string | null; new_assignee: string; created_at: string }

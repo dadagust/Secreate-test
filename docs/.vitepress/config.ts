@@ -84,6 +84,8 @@ export default defineConfig({
         items: [
           { text: 'Индекс ADR', link: '/adr/' },
           { text: '0001 Агентный процесс', link: '/adr/0001-agent-workflow' },
+          { text: '0002 Содержание событий аудита', link: '/adr/0002-structured-transition-audit' },
+          { text: '0003 Backfill исторического аудита', link: '/adr/0003-backfill-legacy-audit-details' },
         ],
       },
     ],

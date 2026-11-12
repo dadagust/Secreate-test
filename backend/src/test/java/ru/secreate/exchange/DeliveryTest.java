@@ -18,6 +18,9 @@ class DeliveryTest {
     @Autowired javax.sql.DataSource dataSource;
 
     @Test void workerTickDeliversSeveralReadyTasksInOneBoundedCycle() throws Exception {
+        // This shared Testcontainers database retains rows between test methods. Defer older
+        // READY work so this test measures its four fixtures, not unrelated earlier tests.
+        db.update("update outbox set next_attempt=now()+interval '1 day' where state='READY'");
         var ids = new java.util.ArrayList<UUID>();
         String marker = UUID.randomUUID().toString();
         for (int i = 0; i < 4; i++) ids.add(service.create("alice", UUID.randomUUID().toString(), marker + "-" + i).id());
@@ -403,6 +406,158 @@ class DeliveryTest {
         assertEquals(current.token(),db.queryForObject("select lease_token from outbox where task_id=?",UUID.class,old.id()));
     }
 
+    @Test void completeRechecksLeaseAfterWaitingForTaskLock() throws Exception {
+        var lease=freshLease();
+        db.update("update outbox set lease_until=clock_timestamp()+interval '1200 milliseconds' where task_id=?",lease.id());
+        var blocker=dataSource.getConnection();
+        blocker.setAutoCommit(false);
+        try (var statement=blocker.prepareStatement("select id from tasks where id=? for update")) {
+            statement.setObject(1,lease.id());
+            statement.executeQuery().close();
+        }
+        var executor=Executors.newSingleThreadExecutor();
+        try {
+            var result=executor.submit(()->service.complete(lease,1,"SUCCEEDED"));
+            awaitLockWait("%from tasks where id%for update%");
+            awaitLeaseExpiration(lease.id());
+            blocker.commit();
+
+            assertFalse(result.get(5,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals("PENDING",service.get("alice",lease.id()).status());
+            var outbox=db.queryForMap("select state,lease_token,attempts from outbox where task_id=?",lease.id());
+            assertEquals("READY",outbox.get("state"));
+            assertEquals(lease.token(),outbox.get("lease_token"));
+            assertEquals(lease.attempts(),((Number)outbox.get("attempts")).intValue());
+            assertEquals(0,db.queryForObject("select count(*) from exchange_events where task_id=? and event like 'RESULT_%'",Integer.class,lease.id()));
+        } finally {
+            blocker.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void contradictoryBatchRechecksLeaseAfterWaitingForTaskLock() throws Exception {
+        var lease=freshLease();
+        db.update("update outbox set lease_until=clock_timestamp()+interval '1200 milliseconds' where task_id=?",lease.id());
+        var blocker=dataSource.getConnection();
+        blocker.setAutoCommit(false);
+        try (var statement=blocker.prepareStatement("select id from tasks where id=? for update")) {
+            statement.setObject(1,lease.id());
+            statement.executeQuery().close();
+        }
+        var executor=Executors.newSingleThreadExecutor();
+        try {
+            var result=executor.submit(()->service.rejectContradictoryBatch(lease,1,"SUCCEEDED","FAILED"));
+            awaitLockWait("%from tasks where id%for update%");
+            awaitLeaseExpiration(lease.id());
+            blocker.commit();
+
+            assertFalse(result.get(5,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals("PENDING",service.get("alice",lease.id()).status());
+            var outbox=db.queryForMap("select state,lease_token,attempts from outbox where task_id=?",lease.id());
+            assertEquals("READY",outbox.get("state"));
+            assertEquals(lease.token(),outbox.get("lease_token"));
+            assertEquals(lease.attempts(),((Number)outbox.get("attempts")).intValue());
+            assertEquals(0,db.queryForObject("select count(*) from result_conflicts where task_id=?",Integer.class,lease.id()));
+            assertEquals(0,db.queryForObject("select count(*) from exchange_events where task_id=? and event='RESULT_CONFLICT_REQUIRES_REVIEW'",Integer.class,lease.id()));
+        } finally {
+            blocker.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void finishRechecksLeaseAfterWaitingForOutboxLock() throws Exception {
+        var lease=freshLease();
+        db.update("update outbox set lease_until=clock_timestamp()+interval '1200 milliseconds' where task_id=?",lease.id());
+        var blocker=dataSource.getConnection();
+        blocker.setAutoCommit(false);
+        try (var statement=blocker.prepareStatement("select task_id from outbox where task_id=? for update")) {
+            statement.setObject(1,lease.id());
+            statement.executeQuery().close();
+        }
+        var executor=Executors.newSingleThreadExecutor();
+        try {
+            var result=executor.submit(()->service.finish(lease,false));
+            awaitLockWait("%from outbox where task_id%for update%");
+            awaitLeaseExpiration(lease.id());
+            blocker.commit();
+            result.get(5,java.util.concurrent.TimeUnit.SECONDS);
+
+            var outbox=db.queryForMap("select state,lease_token,attempts,failure_reason from outbox where task_id=?",lease.id());
+            assertEquals("READY",outbox.get("state"));
+            assertEquals(lease.token(),outbox.get("lease_token"));
+            assertEquals(lease.attempts(),((Number)outbox.get("attempts")).intValue());
+            assertNull(outbox.get("failure_reason"));
+            assertEquals(0,db.queryForObject("select count(*) from exchange_events where task_id=? and event='AMBIGUOUS_RETRY'",Integer.class,lease.id()));
+        } finally {
+            blocker.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void rejectRechecksLeaseAfterWaitingForOutboxLock() throws Exception {
+        var lease=freshLease();
+        db.update("update outbox set lease_until=clock_timestamp()+interval '1200 milliseconds' where task_id=?",lease.id());
+        var blocker=dataSource.getConnection();
+        blocker.setAutoCommit(false);
+        try (var statement=blocker.prepareStatement("select task_id from outbox where task_id=? for update")) {
+            statement.setObject(1,lease.id());
+            statement.executeQuery().close();
+        }
+        var executor=Executors.newSingleThreadExecutor();
+        try {
+            var result=executor.submit(()->service.reject(lease));
+            awaitLockWait("%from outbox where task_id%for update%");
+            awaitLeaseExpiration(lease.id());
+            blocker.commit();
+            result.get(5,java.util.concurrent.TimeUnit.SECONDS);
+
+            var outbox=db.queryForMap("select state,lease_token,attempts,failure_reason from outbox where task_id=?",lease.id());
+            assertEquals("READY",outbox.get("state"));
+            assertEquals(lease.token(),outbox.get("lease_token"));
+            assertEquals(lease.attempts(),((Number)outbox.get("attempts")).intValue());
+            assertNull(outbox.get("failure_reason"));
+            assertEquals(0,db.queryForObject("select count(*) from exchange_events where task_id=? and event='INVALID_RESULT_REQUIRES_REVIEW'",Integer.class,lease.id()));
+        } finally {
+            blocker.close();
+            executor.shutdownNow();
+        }
+    }
+
+    @Test void contradictoryResultAuditIncludesActualDeliveryTransition() throws Exception {
+        var task=freshTask();
+        var lease=service.claim();
+        assertEquals(task.id(),lease.id());
+        assertTrue(service.rejectContradictoryBatch(lease,1,"SUCCEEDED","FAILED"));
+
+        var event=operatorHistoryEvent(task.id(),"RESULT_CONFLICT_REQUIRES_REVIEW");
+        var details=(java.util.Map<?,?>)event.get("details");
+        assertEquals("READY",details.get("oldDeliveryState"));
+        assertEquals("REVIEW",details.get("newDeliveryState"));
+        assertEquals("PENDING",details.get("oldBusinessStatus"));
+        assertEquals("PENDING",details.get("newBusinessStatus"));
+        assertEquals("CONTRADICTORY_RESULT_BATCH",details.get("reason"));
+    }
+
+    private void awaitLockWait(String queryPattern) throws Exception {
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while(System.nanoTime()<deadline) {
+            Integer waiting=db.queryForObject("select count(*) from pg_stat_activity where wait_event_type='Lock' and query like ?",Integer.class,queryPattern);
+            if(waiting!=null && waiting>0) return;
+            Thread.sleep(10);
+        }
+        fail("Timed out waiting for PostgreSQL lock wait for query " + queryPattern);
+    }
+
+    private void awaitLeaseExpiration(UUID id) throws Exception {
+        long deadline=System.nanoTime()+java.util.concurrent.TimeUnit.SECONDS.toNanos(5);
+        while(System.nanoTime()<deadline) {
+            Boolean expired=db.queryForObject("select lease_until<=clock_timestamp() from outbox where task_id=?",Boolean.class,id);
+            if(Boolean.TRUE.equals(expired)) return;
+            Thread.sleep(10);
+        }
+        fail("Timed out waiting for lease expiration for operationId " + id);
+    }
+
     @Test void expiredLastLeaseClearsTokenAndRecordsReason() {
         var old=freshLease();
         db.update("update outbox set attempts=5,lease_until=now()-interval '1 second' where task_id=?",old.id());
@@ -438,6 +593,117 @@ class DeliveryTest {
             assertEquals("READY",db.queryForObject("select state from outbox where task_id=?",String.class,lease.id()));
             assertEquals(lease.token(),db.queryForObject("select lease_token from outbox where task_id=?",UUID.class,lease.id()));
         } finally { db.execute("alter table exchange_events drop constraint test_reject_result"); }
+    }
+
+    @Test void operatorHistoryReturnsStructuredDetailsForAppliedResult() throws Exception {
+        var task=freshTask();
+        var server=resultServer(task.id()+"|1|SUCCEEDED");
+        try {
+            assertTrue(new DeliveryWorker(service,"http://127.0.0.1:"+server.getAddress().getPort(),false).deliverOne());
+            var event=operatorHistoryEvent(task.id(),"RESULT_APPLY");
+            assertEquals(task.id().toString(),event.get("task_id"));
+            assertEquals("executor",event.get("actor"));
+            assertNotNull(event.get("created_at"));
+            var details=(java.util.Map<?,?>)event.get("details");
+            assertNotNull(details);
+            assertEquals("PENDING",details.get("oldBusinessStatus"));
+            assertEquals("SUCCEEDED",details.get("newBusinessStatus"));
+            assertEquals(0L,((Number)details.get("oldResultVersion")).longValue());
+            assertEquals(1L,((Number)details.get("newResultVersion")).longValue());
+            assertEquals("READY",details.get("oldDeliveryState"));
+            assertEquals("DONE",details.get("newDeliveryState"));
+            assertEquals("APPLY",details.get("resultDecision"));
+        } finally { server.stop(0); }
+    }
+
+    @Test void operatorHistoryReturnsStructuredDetailsForReconciliationDecision() throws Exception {
+        var task=freshTask();
+        String body="{\"operationId\":\""+task.id()+"\",\"status\":\"SUCCEEDED\",\"version\":1,\"executions\":1}";
+        var server=com.sun.net.httpserver.HttpServer.create(new java.net.InetSocketAddress("127.0.0.1",0),0);
+        server.createContext("/operations/",exchange->{byte[] bytes=body.getBytes(java.nio.charset.StandardCharsets.UTF_8);exchange.getResponseHeaders().set("Content-Type","application/json");exchange.sendResponseHeaders(200,bytes.length);try(var out=exchange.getResponseBody()){out.write(bytes);}});
+        server.start();
+        Object previous=org.springframework.test.util.ReflectionTestUtils.getField(reconciliation,"client");
+        org.springframework.test.util.ReflectionTestUtils.setField(reconciliation,"client",org.springframework.web.client.RestClient.create("http://localhost:"+server.getAddress().getPort()));
+        try {
+            String base="http://localhost:"+port+"/api/operator/tasks/"+task.id();
+            assertEquals(200,operatorPost(base+"/reconcile","operator:demo-operator",null));
+            UUID snapshot=db.queryForObject("select id from reconciliations where task_id=? order by observed_at desc,id desc limit 1",UUID.class,task.id());
+            assertEquals(200,operatorPost(base+"/reconciliations/"+snapshot+"/apply","operator:demo-operator",null));
+            var event=operatorHistoryEvent(task.id(),"RECONCILIATION_DECISION_APPLY");
+            assertEquals("operator",event.get("actor"));
+            var details=(java.util.Map<?,?>)event.get("details");
+            assertNotNull(details);
+            assertEquals("PENDING",details.get("oldBusinessStatus"));
+            assertEquals("SUCCEEDED",details.get("newBusinessStatus"));
+            assertEquals(0L,((Number)details.get("oldResultVersion")).longValue());
+            assertEquals(1L,((Number)details.get("newResultVersion")).longValue());
+            assertEquals("READY",details.get("oldDeliveryState"));
+            assertEquals("DONE",details.get("newDeliveryState"));
+            assertEquals(snapshot.toString(),details.get("reconciliationId"));
+        } finally {
+            org.springframework.test.util.ReflectionTestUtils.setField(reconciliation,"client",previous);
+            server.stop(0);
+        }
+    }
+
+    @Test void operatorHistoryReturnsStructuredDetailsForManualRecovery() throws Exception {
+        var task=freshTask();
+        db.update("update outbox set state='FAILED',attempts=5,attempt_limit=5,failure_reason='LAST_LEASE_EXPIRED',lease_token=null,lease_until=null where task_id=?",task.id());
+        String key="audit-recovery-"+UUID.randomUUID();
+        assertEquals(200,operatorPost("http://localhost:"+port+"/api/operator/tasks/"+task.id()+"/retry","operator:demo-operator",key));
+        var event=operatorHistoryEvent(task.id(),"MANUAL_RECOVERY");
+        assertEquals(task.id().toString(),event.get("task_id"));
+        assertEquals("operator",event.get("actor"));
+        assertNotNull(event.get("created_at"));
+        var details=(java.util.Map<?,?>)event.get("details");
+        assertNotNull(details);
+        assertEquals("FAILED",details.get("oldDeliveryState"));
+        assertEquals("READY",details.get("newDeliveryState"));
+        assertEquals(5L,((Number)details.get("attemptLimitBefore")).longValue());
+        assertEquals(10L,((Number)details.get("attemptLimitAfter")).longValue());
+        assertEquals("LAST_LEASE_EXPIRED",details.get("reason"));
+        assertFalse(details.containsKey("commandKey"),"idempotency keys must not be exposed in history");
+    }
+
+    @Test void operatorHistoryDistinguishesDuplicateStaleAndConflictingResults() throws Exception {
+        var task=freshTask();
+        assertTrue(service.complete(service.claim(),2,"SUCCEEDED"));
+        db.update("update outbox set state='READY',next_attempt=now() where task_id=?",task.id());
+        assertTrue(service.complete(service.claim(),2,"SUCCEEDED"));
+        db.update("update outbox set state='READY',next_attempt=now() where task_id=?",task.id());
+        assertTrue(service.complete(service.claim(),1,"FAILED"));
+        db.update("update outbox set state='READY',next_attempt=now() where task_id=?",task.id());
+        assertTrue(service.complete(service.claim(),2,"FAILED"));
+        assertEquals("SUCCEEDED",service.get("alice",task.id()).status());
+        assertEquals(2,service.get("alice",task.id()).version());
+
+        var duplicate=(java.util.Map<?,?>)operatorHistoryEvent(task.id(),"RESULT_DUPLICATE").get("details");
+        assertEquals("SUCCEEDED",duplicate.get("oldBusinessStatus"));
+        assertEquals("SUCCEEDED",duplicate.get("newBusinessStatus"));
+        assertEquals("SUCCEEDED",duplicate.get("incomingBusinessStatus"));
+        assertEquals(2L,((Number)duplicate.get("oldResultVersion")).longValue());
+        assertEquals(2L,((Number)duplicate.get("newResultVersion")).longValue());
+
+        var stale=(java.util.Map<?,?>)operatorHistoryEvent(task.id(),"RESULT_STALE").get("details");
+        assertEquals("SUCCEEDED",stale.get("oldBusinessStatus"));
+        assertEquals("SUCCEEDED",stale.get("newBusinessStatus"));
+        assertEquals("FAILED",stale.get("incomingBusinessStatus"));
+        assertEquals(1L,((Number)stale.get("incomingResultVersion")).longValue());
+
+        var conflict=(java.util.Map<?,?>)operatorHistoryEvent(task.id(),"RESULT_CONFLICT").get("details");
+        assertEquals("SUCCEEDED",conflict.get("oldBusinessStatus"));
+        assertEquals("SUCCEEDED",conflict.get("newBusinessStatus"));
+        assertEquals("FAILED",conflict.get("incomingBusinessStatus"));
+        assertEquals("REVIEW",conflict.get("newDeliveryState"));
+        assertEquals("SAME_VERSION_DIFFERENT_RESULT",conflict.get("reason"));
+    }
+
+    private java.util.Map<?,?> operatorHistoryEvent(UUID taskId,String eventName) throws Exception {
+        var response=api("GET","http://localhost:"+port+"/api/operator/tasks/"+taskId,"operator:demo-operator",null);
+        assertEquals(200,response.statusCode(),response.body());
+        var detail=tools.jackson.databind.json.JsonMapper.builder().build().readValue(response.body(),java.util.Map.class);
+        var history=(java.util.List<?>)detail.get("history");
+        return history.stream().map(item->(java.util.Map<?,?>)item).filter(item->eventName.equals(item.get("event"))).reduce((first,second)->second).orElseThrow();
     }
 
     private java.net.http.HttpResponse<String> post(String key,String title) throws Exception {
@@ -800,6 +1066,183 @@ class DeliveryTest {
             workerThread.interrupt();
             workerThread.join(1000);
             emulator.stop(0);
+        }
+    }
+
+    @Test void migrationBackfillsLegacyV7AuditTransitionDetailsFromStoredHistory() throws Exception {
+        String schema = "legacy_audit_" + UUID.randomUUID().toString().replace("-", "");
+        UUID id = UUID.randomUUID();
+        var legacy = org.flywaydb.core.Flyway.configure()
+                .dataSource(dataSource)
+                .schemas(schema)
+                .defaultSchema(schema)
+                .locations("classpath:db/migration")
+                .target(org.flywaydb.core.api.MigrationVersion.fromVersion("7"))
+                .load();
+        try {
+            legacy.migrate();
+            var createdAt = java.sql.Timestamp.from(java.time.Instant.now().minusSeconds(20));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'SUCCEEDED',1,?)",
+                    id, "alice", "legacy-" + id, ExchangeService.hash("Legacy migration"), "Legacy migration", createdAt);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit,recovery_pending) values (?,'DONE',2,now(),5,false)", id);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?)",
+                    id, "CREATED", "alice", createdAt,
+                    id, "ATTEMPT_1", "worker", java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(1)),
+                    id, "AMBIGUOUS_RETRY", "worker", java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(2)),
+                    id, "ATTEMPT_2", "worker", java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(3)),
+                    id, "RESULT_APPLY", "executor", java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(4)));
+            db.update("insert into " + schema + ".reconciliations(id,task_id,actor,observed_at,local_status,local_version,delivery_state,attempts,external_state,external_status,external_version,external_executions,outcome) values (?,?,'operator',?,'SUCCEEDED',1,'DONE',2,'FOUND','SUCCEEDED',1,1,'MATCH')",
+                    UUID.randomUUID(), id, java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(5)));
+
+            UUID exhaustedId = UUID.randomUUID();
+            var exhaustedCreatedAt = java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(30));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'PENDING',0,?)",
+                    exhaustedId, "alice", "legacy-exhausted-" + exhaustedId, ExchangeService.hash("Legacy exhausted"), "Legacy exhausted", exhaustedCreatedAt);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit,recovery_pending,failure_reason) values (?,'FAILED',5,now(),5,false,'TEMPORARY_DELIVERY_FAILURE')", exhaustedId);
+            long secondOffset = 1;
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)",
+                    exhaustedId, "CREATED", "alice", exhaustedCreatedAt);
+            for (int attempt = 1; attempt <= 5; attempt++) {
+                db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)",
+                        exhaustedId, "ATTEMPT_" + attempt, "worker", java.sql.Timestamp.from(exhaustedCreatedAt.toInstant().plusSeconds(secondOffset++)));
+                db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)",
+                        exhaustedId, "AMBIGUOUS_RETRY", "worker", java.sql.Timestamp.from(exhaustedCreatedAt.toInstant().plusSeconds(secondOffset++)));
+            }
+
+            UUID conflictId = UUID.randomUUID();
+            var conflictBase = java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(60));
+            var conflictAt = java.sql.Timestamp.from(conflictBase.toInstant().plusSeconds(2));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'PENDING',0,?)",
+                    conflictId, "alice", "legacy-conflict-" + conflictId, ExchangeService.hash("Legacy conflict"), "Legacy conflict", conflictBase);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit,failure_reason) values (?,'REVIEW',1,now(),5,'SAME_VERSION_DIFFERENT_RESULT')", conflictId);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?),(?,?,?,?),(?,?,?,?)",
+                    conflictId, "CREATED", "alice", conflictBase,
+                    conflictId, "ATTEMPT_1", "worker", java.sql.Timestamp.from(conflictBase.toInstant().plusSeconds(1)),
+                    conflictId, "RESULT_CONFLICT", "executor", conflictAt);
+            db.update("insert into " + schema + ".result_conflicts(task_id,attempt,current_version,incoming_version,current_status,incoming_status,reason,created_at) values (?,1,0,1,'PENDING','FAILED','SAME_VERSION_DIFFERENT_RESULT',?)",
+                    conflictId, conflictAt);
+
+            UUID reconciliationId = UUID.randomUUID();
+            UUID reconciledTaskId = UUID.randomUUID();
+            var reconciliationBase = java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(120));
+            var observedAt = java.sql.Timestamp.from(reconciliationBase.toInstant().plusSeconds(3));
+            var decidedAt = java.sql.Timestamp.from(reconciliationBase.toInstant().plusSeconds(4));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'SUCCEEDED',1,?)",
+                    reconciledTaskId, "alice", "legacy-reconciled-" + reconciledTaskId, ExchangeService.hash("Legacy reconciled"), "Legacy reconciled", reconciliationBase);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit) values (?,'DONE',1,now(),5)", reconciledTaskId);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?),(?,?,?,?)",
+                    reconciledTaskId, "CREATED", "alice", reconciliationBase,
+                    reconciledTaskId, "ATTEMPT_1", "worker", java.sql.Timestamp.from(reconciliationBase.toInstant().plusSeconds(1)),
+                    reconciledTaskId, "AMBIGUOUS_RETRY", "worker", java.sql.Timestamp.from(reconciliationBase.toInstant().plusSeconds(2)),
+                    reconciledTaskId, "RECONCILIATION_DIFFERENT", "operator", observedAt,
+                    reconciledTaskId, "RECONCILIATION_DECISION_APPLY", "operator", decidedAt);
+            db.update("insert into " + schema + ".reconciliations(id,task_id,actor,observed_at,local_status,local_version,delivery_state,attempts,external_state,external_status,external_version,external_executions,outcome,decision,decided_at,decided_by) values (?,?,?,?,'PENDING',0,'READY',1,'FOUND','SUCCEEDED',1,1,'DIFFERENT','APPLY',?,'operator')",
+                    reconciliationId, reconciledTaskId, "operator", observedAt, decidedAt);
+
+            UUID recoveryId = UUID.randomUUID();
+            var recoveryBase = java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(180));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'PENDING',0,?)",
+                    recoveryId, "alice", "legacy-recovery-" + recoveryId, ExchangeService.hash("Legacy recovery"), "Legacy recovery", recoveryBase);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit,recovery_pending) values (?,'READY',5,now(),10,true)", recoveryId);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)", recoveryId, "CREATED", "alice", recoveryBase);
+            long recoveryOffset = 1;
+            for (int attempt = 1; attempt <= 5; attempt++) {
+                db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)",
+                        recoveryId, "ATTEMPT_" + attempt, "worker", java.sql.Timestamp.from(recoveryBase.toInstant().plusSeconds(recoveryOffset++)));
+                db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?)",
+                        recoveryId, "AMBIGUOUS_RETRY", "worker", java.sql.Timestamp.from(recoveryBase.toInstant().plusSeconds(recoveryOffset++)));
+            }
+            var recoveryAt = java.sql.Timestamp.from(recoveryBase.toInstant().plusSeconds(recoveryOffset));
+            db.update("insert into " + schema + ".recovery_commands(actor,command_key,task_id,created_at) values ('operator',?,?,?)", "legacy-recovery-key", recoveryId, recoveryAt);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,'MANUAL_RECOVERY','operator',?)", recoveryId, recoveryAt);
+
+            UUID unrecoverableId = UUID.randomUUID();
+            var unrecoverableBase = java.sql.Timestamp.from(createdAt.toInstant().plusSeconds(240));
+            db.update("insert into " + schema + ".tasks(id,owner_name,request_key,request_hash,title,status,result_version,created_at) values (?,?,?,?,?,'SUCCEEDED',1,?)",
+                    unrecoverableId, "alice", "legacy-unrecoverable-" + unrecoverableId, ExchangeService.hash("Legacy payload unavailable"), "Legacy payload unavailable", unrecoverableBase);
+            db.update("insert into " + schema + ".outbox(task_id,state,attempts,next_attempt,attempt_limit) values (?,'DONE',1,now(),5)", unrecoverableId);
+            db.update("insert into " + schema + ".exchange_events(task_id,event,actor,created_at) values (?,?,?,?),(?,?,?,?),(?,?,?,?)",
+                    unrecoverableId, "CREATED", "alice", unrecoverableBase,
+                    unrecoverableId, "ATTEMPT_1", "worker", java.sql.Timestamp.from(unrecoverableBase.toInstant().plusSeconds(1)),
+                    unrecoverableId, "RESULT_APPLY", "executor", java.sql.Timestamp.from(unrecoverableBase.toInstant().plusSeconds(2)));
+
+            org.flywaydb.core.Flyway.configure()
+                    .dataSource(dataSource)
+                    .schemas(schema)
+                    .defaultSchema(schema)
+                    .locations("classpath:db/migration")
+                    .load()
+                    .migrate();
+
+            var mapper = tools.jackson.databind.json.JsonMapper.builder().build();
+            var events = db.queryForList("select event,details::text as details from " + schema + ".exchange_events where task_id=? order by id", id);
+            assertEquals(5, events.size());
+            var created = mapper.readValue((String) events.get(0).get("details"), java.util.Map.class);
+            assertEquals("Legacy migration", created.get("title"));
+            assertEquals("PENDING", created.get("newBusinessStatus"));
+            assertEquals("READY", created.get("newDeliveryState"));
+            var firstAttempt = mapper.readValue((String) events.get(1).get("details"), java.util.Map.class);
+            assertEquals(0, ((Number) firstAttempt.get("attemptsBefore")).intValue());
+            assertEquals(1, ((Number) firstAttempt.get("attemptsAfter")).intValue());
+            var retry = mapper.readValue((String) events.get(2).get("details"), java.util.Map.class);
+            assertEquals("READY", retry.get("oldDeliveryState"));
+            assertEquals("READY", retry.get("newDeliveryState"));
+            assertEquals("TEMPORARY_DELIVERY_FAILURE", retry.get("reason"));
+            var secondAttempt = mapper.readValue((String) events.get(3).get("details"), java.util.Map.class);
+            assertEquals(1, ((Number) secondAttempt.get("attemptsBefore")).intValue());
+            assertEquals(2, ((Number) secondAttempt.get("attemptsAfter")).intValue());
+            var applied = mapper.readValue((String) events.get(4).get("details"), java.util.Map.class);
+            assertEquals("PENDING", applied.get("oldBusinessStatus"));
+            assertEquals(0, ((Number) applied.get("oldResultVersion")).intValue());
+            assertEquals("SUCCEEDED", applied.get("newBusinessStatus"));
+            assertEquals(1, ((Number) applied.get("newResultVersion")).intValue());
+            assertEquals("READY", applied.get("oldDeliveryState"));
+            assertEquals("DONE", applied.get("newDeliveryState"));
+            assertEquals(true, applied.get("incomingResultAvailable"));
+            var appliedFromSnapshot = mapper.readValue((String) db.queryForObject("select details::text from " + schema + ".exchange_events where task_id=? and event='RESULT_APPLY'", String.class, id), java.util.Map.class);
+            assertEquals("SUCCEEDED", appliedFromSnapshot.get("incomingBusinessStatus"));
+            assertEquals(1, ((Number) appliedFromSnapshot.get("incomingResultVersion")).intValue());
+            var lastRetry = db.queryForMap("select details::text as details from " + schema + ".exchange_events where task_id=? and event='AMBIGUOUS_RETRY' order by id desc limit 1", exhaustedId);
+            var exhaustedDetails = mapper.readValue((String) lastRetry.get("details"), java.util.Map.class);
+            assertEquals(5, ((Number) exhaustedDetails.get("attempts")).intValue());
+            assertEquals("FAILED", exhaustedDetails.get("newDeliveryState"));
+            assertEquals("TEMPORARY_DELIVERY_FAILURE", exhaustedDetails.get("reason"));
+
+            var conflictDetailsRow = db.queryForMap("select details::text as details from " + schema + ".exchange_events where task_id=? and event='RESULT_CONFLICT'", conflictId);
+            var conflictDetails = mapper.readValue((String) conflictDetailsRow.get("details"), java.util.Map.class);
+            assertEquals("PENDING", conflictDetails.get("oldBusinessStatus"));
+            assertEquals("FAILED", conflictDetails.get("incomingBusinessStatus"));
+            assertEquals("SAME_VERSION_DIFFERENT_RESULT", conflictDetails.get("reason"));
+            assertEquals("REVIEW", conflictDetails.get("newDeliveryState"));
+
+            var reconciliationDetailsRow = db.queryForMap("select details::text as details from " + schema + ".exchange_events where task_id=? and event='RECONCILIATION_DECISION_APPLY'", reconciledTaskId);
+            var reconciliationDetails = mapper.readValue((String) reconciliationDetailsRow.get("details"), java.util.Map.class);
+            assertEquals("PENDING", reconciliationDetails.get("oldBusinessStatus"));
+            assertEquals("SUCCEEDED", reconciliationDetails.get("newBusinessStatus"));
+            assertEquals(1, ((Number) reconciliationDetails.get("newResultVersion")).intValue());
+            assertEquals("DIFFERENT", reconciliationDetails.get("reconciliationOutcome"));
+            assertEquals("SUCCEEDED", reconciliationDetails.get("externalBusinessStatus"));
+
+            var recoveryDetailsRow = db.queryForMap("select details::text as details from " + schema + ".exchange_events where task_id=? and event='MANUAL_RECOVERY'", recoveryId);
+            var recoveryDetails = mapper.readValue((String) recoveryDetailsRow.get("details"), java.util.Map.class);
+            assertEquals(true, recoveryDetails.get("commandRecorded"));
+            assertEquals("FAILED", recoveryDetails.get("oldDeliveryState"));
+            assertEquals("READY", recoveryDetails.get("newDeliveryState"));
+            assertEquals(10, ((Number) recoveryDetails.get("attemptLimitAfter")).intValue());
+
+            var unavailableDetails = mapper.readValue((String) db.queryForObject("select details::text from " + schema + ".exchange_events where task_id=? and event='RESULT_APPLY'", String.class, unrecoverableId), java.util.Map.class);
+            assertEquals(false, unavailableDetails.get("incomingResultAvailable"));
+            assertEquals(false, unavailableDetails.get("legacyPayloadAvailable"));
+            assertEquals(null, unavailableDetails.get("newBusinessStatus"));
+            assertEquals("LEGACY_RESULT_PAYLOAD_NOT_RECORDED", unavailableDetails.get("reason"));
+
+            assertEquals(0, db.queryForObject("select count(*) from " + schema + ".exchange_events where details='{}'::jsonb", Integer.class));
+            assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> db.update("insert into " + schema + ".exchange_events(task_id,event,actor) values (?,?,?)", id, "EMPTY_AUDIT", "test"));
+            assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> db.update("insert into " + schema + ".exchange_events(task_id,event,actor,details) values (?,?,?, '{}'::jsonb)", id, "EMPTY_AUDIT", "test"));
+        } finally {
+            db.execute("drop schema if exists " + schema + " cascade");
         }
     }
 }

@@ -26,12 +26,38 @@ INSERT INTO outbox(task_id, state, attempts, next_attempt, attempt_limit, recove
 SELECT id, 'DONE', 1, now(), 5, false, null
 FROM tasks WHERE request_key LIKE 'nf08-fixture-%';
 
-INSERT INTO exchange_events(task_id, event, actor, created_at)
-SELECT id, 'CREATED', owner_name, created_at FROM tasks WHERE request_key LIKE 'nf08-fixture-%'
-UNION ALL
-SELECT id, 'ATTEMPT_1', 'worker', created_at FROM tasks WHERE request_key LIKE 'nf08-fixture-%'
-UNION ALL
-SELECT id, 'RESULT_APPLY', 'executor', created_at FROM tasks WHERE request_key LIKE 'nf08-fixture-%';
+INSERT INTO exchange_events(task_id, event, actor, details, created_at)
+SELECT id, 'CREATED', owner_name,
+       jsonb_build_object('ownerName', owner_name, 'title', title,
+                          'newBusinessStatus', 'PENDING', 'newResultVersion', 0,
+                          'newDeliveryState', 'READY'), created_at
+FROM tasks WHERE request_key LIKE 'nf08-fixture-%';
+
+INSERT INTO exchange_events(task_id, event, actor, details, created_at)
+SELECT id, 'ATTEMPT_1', 'worker',
+       jsonb_build_object('oldDeliveryState', 'READY', 'newDeliveryState', 'READY',
+                          'attemptsBefore', 0, 'attemptsAfter', 1, 'leaseSeconds', 30), created_at
+FROM tasks WHERE request_key LIKE 'nf08-fixture-%';
+
+INSERT INTO exchange_events(task_id, event, actor, details, created_at)
+SELECT id, 'RESULT_APPLY', 'executor',
+       jsonb_build_object('oldBusinessStatus', 'PENDING', 'newBusinessStatus', status,
+                          'oldResultVersion', 0, 'newResultVersion', result_version,
+                          'incomingBusinessStatus', status, 'incomingResultVersion', result_version,
+                          'resultDecision', 'APPLY', 'oldDeliveryState', 'READY',
+                          'newDeliveryState', 'DONE', 'reason', null), created_at
+FROM tasks WHERE request_key LIKE 'nf08-fixture-%';
+
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM exchange_events e
+        JOIN tasks t ON t.id = e.task_id
+        WHERE t.request_key LIKE 'nf08-fixture-%' AND e.details = '{}'::jsonb
+    ) THEN
+        RAISE EXCEPTION 'NF08 fixtures must include structured audit details';
+    END IF;
+END $$;
 
 INSERT INTO executor.executions(id, payload, executions, result_version, result_status, executed_at)
 SELECT id, title, 1, result_version, status, created_at

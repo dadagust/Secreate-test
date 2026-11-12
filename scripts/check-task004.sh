@@ -109,6 +109,9 @@ wait_done "$first"
 assert_external_one "$first"
 history_count=$(query "select count(*) from exchange_events where task_id='$first' and event in ('ATTEMPT_1','ATTEMPT_2')")
 [[ $history_count == 2 ]] || { echo 'Нет истории двух попыток.' >&2; exit 1; }
+attempt_after=$(query "select details->>'attemptsAfter' from exchange_events where task_id='$first' and event='ATTEMPT_2' order by id desc limit 1")
+applied_status=$(query "select details->>'newBusinessStatus' from exchange_events where task_id='$first' and event='RESULT_APPLY' order by id desc limit 1")
+[[ $attempt_after == 2 && $applied_status == SUCCEEDED ]] || { echo 'После backend restart нет ожидаемого JSONB-содержимого попытки/результата.' >&2; exit 1; }
 curl -fsS --max-time 5 -u operator:demo-operator "$api/api/operator/tasks/$first" >/dev/null
 echo "Backend restart: operationId=$first, сохранённый lease=$saved_lease, попытки >=2, executions=1"
 
@@ -123,24 +126,28 @@ for ((i=0;i<150;i++)); do
   sleep .1
 done
 if (( !ambiguous )); then echo 'Не зафиксирована потеря ответа.' >&2; exit 1; fi
+retry_reason=$(query "select details->>'reason' from exchange_events where task_id='$second' and event='AMBIGUOUS_RETRY' order by id desc limit 1")
+[[ $retry_reason == TEMPORARY_DELIVERY_FAILURE ]] || { echo 'Событие потери ответа не содержит причину в JSONB details.' >&2; exit 1; }
 "${compose[@]}" kill backend
 assert_external_one "$second"
 pending=$(query "select state from outbox where task_id='$second'")
 [[ $pending == READY ]] || { echo "Повтор уже не ожидает: $pending" >&2; exit 1; }
-first_history=$(query "select md5(string_agg(id::text || event || actor || created_at::text, '|' order by id)) from exchange_events where task_id='$first'")
-second_history=$(query "select md5(string_agg(id::text || event || actor || created_at::text, '|' order by id)) from exchange_events where task_id='$second'")
+first_history=$(query "select md5(string_agg(id::text || event || actor || created_at::text || details::text, '|' order by id)) from exchange_events where task_id='$first'")
+second_history=$(query "select md5(string_agg(id::text || event || actor || created_at::text || details::text, '|' order by id)) from exchange_events where task_id='$second'")
 audit=$(query "select md5(string_agg(a.id::text || a.actor || coalesce(a.old_assignee,'') || a.new_assignee || a.created_at::text, '|' order by a.id)) from assignment_audit a join tasks t on t.id=a.task_id where t.request_key='secreate-demo-v1-regular'")
 [[ -n $first_history && -n $second_history && -n $audit ]] || { echo 'Нет истории или аудита до рестарта.' >&2; exit 1; }
 volume=$(docker inspect --format '{{range .Mounts}}{{.Name}}{{end}}' "$postgres")
 "${compose[@]}" restart postgres
 for ((i=0;i<60;i++)); do if docker exec "$postgres" pg_isready -U exchange -d exchange >/dev/null 2>&1; then break; fi; sleep 1; done
 [[ $(docker inspect --format '{{range .Mounts}}{{.Name}}{{end}}' "$postgres") == "$volume" ]] || { echo 'Том PostgreSQL изменился.' >&2; exit 1; }
-[[ $(query "select md5(string_agg(id::text || event || actor || created_at::text, '|' order by id)) from exchange_events where task_id='$first'") == "$first_history" ]]
-[[ $(query "select md5(string_agg(id::text || event || actor || created_at::text, '|' order by id)) from exchange_events where task_id='$second'") == "$second_history" ]]
+[[ $(query "select md5(string_agg(id::text || event || actor || created_at::text || details::text, '|' order by id)) from exchange_events where task_id='$first'") == "$first_history" ]]
+[[ $(query "select md5(string_agg(id::text || event || actor || created_at::text || details::text, '|' order by id)) from exchange_events where task_id='$second'") == "$second_history" ]]
 [[ $(query "select md5(string_agg(a.id::text || a.actor || coalesce(a.old_assignee,'') || a.new_assignee || a.created_at::text, '|' order by a.id)) from assignment_audit a join tasks t on t.id=a.task_id where t.request_key='secreate-demo-v1-regular'") == "$audit" ]]
 "${compose[@]}" up -d --no-deps backend
 wait_api
 wait_done "$second"
 assert_external_one "$second"
+resumed_status=$(query "select details->>'newBusinessStatus' from exchange_events where task_id='$second' and event='RESULT_APPLY' order by id desc limit 1")
+[[ $resumed_status == SUCCEEDED ]] || { echo 'После PostgreSQL restart не записан переход результата в JSONB audit.' >&2; exit 1; }
 curl -fsS --max-time 5 -u operator:demo-operator "$api/api/operator/tasks/$second" >/dev/null
 echo "PostgreSQL restart: operationId=$second, том=$volume, история и аудит сохранены, executions=1"

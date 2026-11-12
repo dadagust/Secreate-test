@@ -11,6 +11,22 @@ function eventLabel(event: string): string {
   return labels[event] ?? event
 }
 
+function eventDetails(event: { details?: Record<string, unknown> }): string | null {
+  const details=event.details ?? {}
+  const parts:string[]=[]
+  const value=(key:string) => details[key] === null || details[key] === undefined ? '—' : String(details[key])
+  if ('oldBusinessStatus' in details || 'newBusinessStatus' in details) parts.push(`Исполнение: ${value('oldBusinessStatus')} → ${value('newBusinessStatus')}`)
+  if ('oldResultVersion' in details || 'newResultVersion' in details) parts.push(`Версия: ${value('oldResultVersion')} → ${value('newResultVersion')}`)
+  if ('oldDeliveryState' in details || 'newDeliveryState' in details) parts.push(`Доставка: ${value('oldDeliveryState')} → ${value('newDeliveryState')}`)
+  if ('incomingBusinessStatus' in details) parts.push(`Входящий результат: ${value('incomingBusinessStatus')} (версия ${value('incomingResultVersion')})`)
+  if ('attemptsBefore' in details || 'attemptsAfter' in details) parts.push(`Попытки: ${value('attemptsBefore')} → ${value('attemptsAfter')}`)
+  if ('attemptLimitBefore' in details || 'attemptLimitAfter' in details) parts.push(`Лимит попыток: ${value('attemptLimitBefore')} → ${value('attemptLimitAfter')}`)
+  if ('outcome' in details) parts.push(`Исход сверки: ${value('outcome')}`)
+  if ('resultDecision' in details && details.resultDecision !== 'APPLY') parts.push(`Решение: ${value('resultDecision')}`)
+  if ('reason' in details && details.reason) parts.push(`Причина: ${value('reason')}`)
+  return parts.length ? parts.join(' · ') : null
+}
+
 export function TaskDetails({ detail, operator, busy, onClose, onRefresh, onReconcile, onApply, onRetry, onAssign }: { detail: Detail | OwnDetail; operator: boolean; busy: boolean; onClose: () => void; onRefresh: () => void; onReconcile: () => void; onApply: (id: string) => void; onRetry: () => void; onAssign: (name: string, version: number) => void }) {
   const [assignee,setAssignee] = useState('alice')
   if (!operator) { const own=detail as OwnDetail; return <section className="surface detail"><div className="section-head"><h2>{own.title}</h2><button className="button" onClick={onClose}>К реестру</button></div><p className="muted">Идентификатор: {own.id}</p><div className="facts"><span>Исполнение</span><StatusBadge value={own.status} /></div></section> }
@@ -19,6 +35,6 @@ export function TaskDetails({ detail, operator, busy, onClose, onRefresh, onReco
     <p className="muted identifier">{task.id}</p><div className="facts"><span>Доставка <StatusBadge value={task.delivery_state} /></span><span>Исполнение <StatusBadge value={task.business_status} /></span><span>Ответственный: {task.assignee ?? 'Не назначен'}</span></div>{task.failure_reason && <p className="notice notice--error">Причина проблемы: {task.failure_reason}</p>}
     <div className="detail-grid"><section><h3>Действия</h3><div className="stack"><button className="button button--primary" disabled={busy} onClick={onReconcile}>Сверить результат</button><button className="button" disabled={busy || task.result_version > 0 || task.recovery_pending || !['READY','FAILED','REVIEW'].includes(task.delivery_state) || Boolean(task.lease_until && Date.parse(task.lease_until)>Date.now())} onClick={onRetry}>Повторить доставку</button><label>Новый ответственный<select value={assignee} onChange={e=>setAssignee(e.target.value)}><option value="alice">Алиса</option><option value="bob">Боб</option><option value="operator">Оператор</option></select></label><button className="button" disabled={busy} onClick={()=>onAssign(assignee,task.local_version)}>Назначить</button></div></section>
       <ReconciliationPanel snapshots={task.reconciliations} busy={busy} onApply={onApply}/></div>
-    <div className="detail-grid"><section><h3>История обмена</h3>{task.history.length ? <ul className="record-list">{task.history.map(e=><li key={e.id}><strong>{eventLabel(e.event)}</strong><br/><span className="muted">{e.actor} · {new Date(e.created_at).toLocaleString('ru-RU', { timeZone:'UTC' })} UTC</span></li>)}</ul> : <p className="muted">Событий пока нет.</p>}</section><section><h3>Конфликты</h3>{task.conflicts.length ? <ul className="record-list">{task.conflicts.map(c=><li key={c.id}>{c.reason}: версии {c.current_version} и {c.incoming_version}</li>)}</ul> : <p className="muted">Конфликтов нет.</p>}<h3 className="section-subheading">История назначения</h3>{task.assignmentHistory.length ? <ul className="record-list">{task.assignmentHistory.map(a=><li key={a.id}>{a.old_assignee ?? 'Не назначен'} → {a.new_assignee}<br/><span className="muted">{a.actor} · {new Date(a.created_at).toLocaleString('ru-RU',{timeZone:'UTC'})} UTC</span></li>)}</ul> : <p className="muted">Изменений пока нет.</p>}</section></div>
+    <div className="detail-grid"><section><h3>История обмена</h3>{task.history.length ? <ul className="record-list">{task.history.map(e=><li key={e.id}><strong>{eventLabel(e.event)}</strong><br/><span className="muted">{e.actor} · {new Date(e.created_at).toLocaleString('ru-RU', { timeZone:'UTC' })} UTC</span>{eventDetails(e) && <p className="muted audit-details">{eventDetails(e)}</p>}</li>)}</ul> : <p className="muted">Событий пока нет.</p>}</section><section><h3>Конфликты</h3>{task.conflicts.length ? <ul className="record-list">{task.conflicts.map(c=><li key={c.id}>{c.reason}: версии {c.current_version} и {c.incoming_version}</li>)}</ul> : <p className="muted">Конфликтов нет.</p>}<h3 className="section-subheading">История назначения</h3>{task.assignmentHistory.length ? <ul className="record-list">{task.assignmentHistory.map(a=><li key={a.id}>{a.old_assignee ?? 'Не назначен'} → {a.new_assignee}<br/><span className="muted">{a.actor} · {new Date(a.created_at).toLocaleString('ru-RU',{timeZone:'UTC'})} UTC</span></li>)}</ul> : <p className="muted">Изменений пока нет.</p>}</section></div>
   </section>
 }

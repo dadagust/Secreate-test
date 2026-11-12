@@ -58,7 +58,7 @@ class ReconciliationService {
         if(rows.isEmpty()) throw new ResponseStatusException(HttpStatus.NOT_FOUND);
         return rows.getFirst();
     }
-    private void event(UUID id,String actor,String event) { db.update("insert into exchange_events(task_id,event,actor) values (?,?,?)",id,event,actor); }
+    private void event(UUID id,String actor,String event,Map<String,?> details) { AuditEvents.record(db,id,event,actor,details); }
     public Map<String,Object> observe(String actor,UUID id) {
         var before=scoped(actor,id,false); var remote=external(id);
         return transactions.execute(transaction -> {
@@ -75,7 +75,13 @@ class ReconciliationService {
         if(legacyText!=null && legacyText.indexOf('\0')>=0) legacyText=null;
         db.update("insert into reconciliations(id,task_id,actor,local_status,local_version,delivery_state,attempts,external_state,external_status,external_version,external_executions,outcome,invalid_reason,invalid_response,invalid_response_bytes) values (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 snapshot,id,actor,row.get("status"),local,row.get("state"),row.get("attempts"),remote.state(),remote.status(),remote.version(),remote.executions(),outcome,remote.reason(),legacyText,raw);
-        event(id,actor,"RECONCILIATION_"+outcome);
+        event(id,actor,"RECONCILIATION_"+outcome,AuditEvents.details(
+                "reconciliationId", snapshot.toString(), "outcome", outcome,
+                "localBusinessStatus", row.get("status"), "localResultVersion", local,
+                "localDeliveryState", row.get("state"), "localAttempts", row.get("attempts"),
+                "externalState", remote.state(), "externalBusinessStatus", remote.status(),
+                "externalResultVersion", remote.version(), "externalExecutions", remote.executions(),
+                "reason", remote.reason()));
         return db.queryForMap("select * from reconciliations where id=?",snapshot);
         });
     }
@@ -99,10 +105,19 @@ class ReconciliationService {
         var decision=ResultDecision.decide(((Number)local.get("result_version")).longValue(),(String)local.get("status"),remote.version(),remote.status());
         if(decision==ResultDecision.CONFLICT || decision==ResultDecision.STALE)
             throw new ResponseStatusException(HttpStatus.CONFLICT,"External version cannot be applied");
+        String oldBusinessStatus=(String)local.get("status");
+        long oldResultVersion=((Number)local.get("result_version")).longValue();
         if(decision==ResultDecision.APPLY) db.update("update tasks set status=?,result_version=? where id=?",remote.status(),remote.version(),id);
         db.update("update outbox set state='DONE',lease_token=null,lease_until=null,recovery_pending=false,failure_reason=null where task_id=?",id);
         db.update("update reconciliations set decision=?,decided_at=now(),decided_by=? where id=?",decision.name(),actor,snapshot);
-        event(id,actor,"RECONCILIATION_DECISION_"+decision.name());
+        event(id,actor,"RECONCILIATION_DECISION_"+decision.name(),AuditEvents.details(
+                "reconciliationId", snapshot.toString(), "resultDecision", decision.name(),
+                "oldBusinessStatus", oldBusinessStatus,
+                "newBusinessStatus", decision==ResultDecision.APPLY ? remote.status() : oldBusinessStatus,
+                "oldResultVersion", oldResultVersion,
+                "newResultVersion", decision==ResultDecision.APPLY ? remote.version() : oldResultVersion,
+                "incomingBusinessStatus", remote.status(), "incomingResultVersion", remote.version(),
+                "oldDeliveryState", local.get("state"), "newDeliveryState", "DONE"));
         return db.queryForMap("select * from reconciliations where id=?",snapshot);
         });
     }
@@ -127,7 +142,12 @@ class ReconciliationService {
             return Map.of("operationId",id,"scheduled",true);
         }
         db.update("update outbox set state='READY',next_attempt=now(),lease_token=null,lease_until=null,recovery_pending=true,failure_reason=null,attempt_limit=attempts+5 where task_id=?",id);
-        event(id,actor,"MANUAL_RECOVERY");
+        event(id,actor,"MANUAL_RECOVERY",AuditEvents.details(
+                "oldDeliveryState", row.get("state"), "newDeliveryState", "READY",
+                "businessStatus", row.get("status"), "resultVersion", row.get("result_version"),
+                "attempts", row.get("attempts"), "attemptLimitBefore", row.get("attempt_limit"),
+                "attemptLimitAfter", ((Number)row.get("attempts")).intValue()+5,
+                "reason", row.get("failure_reason")));
         return Map.of("operationId",id,"scheduled",true);
     }
 }

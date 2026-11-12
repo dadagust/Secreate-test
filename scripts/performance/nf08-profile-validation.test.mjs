@@ -7,7 +7,7 @@ import { validateNf08Profile } from './nf08-profile-validation.mjs'
 import { writeNf08Report } from './nf08-report.mjs'
 import { validateNf08ApiResponse } from './nf08-response-validation.mjs'
 import { classifyNf08HttpFailure } from './nf08-http-errors.mjs'
-import { addNf08Metric, createNf08Metrics, summarizeNf08Metric } from './nf08-metrics.mjs'
+import { addNf08Metric, createNf08Metrics, summarizeNf08Metric, summarizeNf08OperationBuckets } from './nf08-metrics.mjs'
 
 const successfulOperation = {
   requests: 100, successful: 100, errors: 0, businessRejections: 0,
@@ -35,6 +35,20 @@ function profile(overrides = {}) {
 
 test('accepts a non-empty NF08 profile within business rejection limit', () => {
   assert.equal(validateNf08Profile(profile()).passed, true)
+})
+
+test('summarizes every operation bucket used by the persisted NF08 report', () => {
+  const buckets = Object.fromEntries(['list', 'detail', 'create', 'patch'].map((name) => [name, createNf08Metrics()]))
+  addNf08Metric(buckets.list, { elapsedMs: 5, ok: true, status: 200 })
+  addNf08Metric(buckets.create, { elapsedMs: 9, ok: false, status: 503, reason: 'http_503:unavailable' })
+
+  const summary = summarizeNf08OperationBuckets(buckets)
+  assert.deepEqual(Object.keys(summary), ['list', 'detail', 'create', 'patch'])
+  assert.equal(summary.list.requests, 1)
+  assert.equal(summary.list.successful, 1)
+  assert.equal(summary.create.requests, 1)
+  assert.equal(summary.create.statusCodes['503'], 1)
+  assert.equal(summary.create.errorReasons['http_503:unavailable'], 1)
 })
 
 test('rejects an empty page as an invalid list response', () => {

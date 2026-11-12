@@ -49,7 +49,7 @@ Outbox хранит попытки, время следующей попытки
 
 Демонстрационные пользователи `alice` и `bob` имеют роль INITIATOR и видят свои задания; `operator` имеет роль OPERATOR и видит владельцев из `operator_scope` (по умолчанию Alice). Проверки выполняются на сервере. Учётные записи и Basic-аутентификация предназначены для локального демо.
 
-Flyway применяет миграции `backend/src/main/resources/db/migration/V1…V7`: `tasks`, `outbox`, `exchange_events`, `result_conflicts`, `operator_scope`, `reconciliations`, `recovery_commands` и `assignment_audit`. Эмулятор создаёт `executor.executions` и `executor.fault_modes` при старте. Метки времени хранятся как `timestamptz`; API и UI используют UTC. Подробные контракты и правила — в [API](api.md) и [интеграции](integrations.md); проверки и результаты нагрузки — в [проверках](quality-checks.md) и [отчёте](performance.md).
+Flyway применяет миграции `backend/src/main/resources/db/migration/V1…V9`: `tasks`, `outbox`, `exchange_events`, `result_conflicts`, `operator_scope`, `reconciliations`, `recovery_commands`, `assignment_audit` и JSONB-содержимое переходов аудита. V9 заполняет исторические события из доступных авторитетных источников и явно помечает утраченное содержимое. Эмулятор создаёт `executor.executions` и `executor.fault_modes` при старте; Compose ждёт его readiness перед запуском backend и Flyway. Метки времени хранятся как `timestamptz`; API и UI используют UTC. Подробные контракты и правила — в [API](api.md) и [интеграции](integrations.md); проверки и результаты нагрузки — в [проверках](quality-checks.md) и [отчёте](performance.md).
 
 
 ## Прерывание фоновой доставки
@@ -59,3 +59,7 @@ Flyway применяет миграции `backend/src/main/resources/db/migrat
 ## Идентификация демозаданий
 
 Seed использует зарезервированный namespace idempotency keys `secreate-demo-v1-<slug>` и получает идентификатор задания из ответа POST. Заголовок является только отображаемым текстом и не используется для поиска seed-записей. Режим сбоя устанавливается до POST, а повторный запуск получает ту же запись по ключу и завершает только отсутствующие безопасные шаги.
+
+## Аудит изменений и текущая граница
+
+`exchange_events` хранит объект (`task_id`), код события, автора/источник, время и непустые `details` JSONB. `ExchangeService` записывает в событие старые и новые бизнес-статусы и версии, входящий результат, исход применения, переход доставки и причину в той же транзакции, что и изменение задания/outbox. Дубликат и устаревший результат сохраняют наблюдение без ложного изменения старых/новых значений. `ReconciliationService` также аудирует решение и ручное восстановление; `assignment_audit` и `reconciliations` продолжают хранить специализированные данные. Операторская карточка отображает детали, API ограничивает чтение областью оператора. V9 восстанавливает старые значения только из сохранённых ledger/snapshot/conflict/command данных. Если источника нет, `legacyPayloadAvailable: false` и причина явно показывают границу восстановления; текущие поля задания не выдаются за исторический payload.

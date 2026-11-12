@@ -149,14 +149,14 @@ function Workspace({ credentials, onLogout }: { credentials: Credentials; onLogo
       const result = await request<Page>(credentials.user, credentials.password, `${endpoint}?${query}`)
       if (alive.current && sequence === listSequence.current && selectedRef.current === null) {
         setData(result)
+        setListBusy(false)
         if (silent) setError('')
       }
     } catch (loadError) {
       if (alive.current && sequence === listSequence.current && selectedRef.current === null) {
         setError(loadError instanceof Error ? loadError.message : 'Не удалось загрузить задания.')
+        setListBusy(false)
       }
-    } finally {
-      if (alive.current && sequence === listSequence.current && !silent) setListBusy(false)
     }
   }, [credentials, page, status, problems, operator, selected, revision])
 
@@ -181,13 +181,13 @@ function Workspace({ credentials, onLogout }: { credentials: Credentials; onLogo
       if (alive.current && sequence === detailSequence.current && selectedRef.current === id) {
         setDetail(result)
         setError('')
+        setDetailBusy(false)
       }
     } catch (detailError) {
       if (alive.current && sequence === detailSequence.current && selectedRef.current === id) {
         setError(detailError instanceof Error ? detailError.message : 'Не удалось открыть задание.')
+        setDetailBusy(false)
       }
-    } finally {
-      if (showLoading && alive.current && sequence === detailSequence.current && selectedRef.current === id) setDetailBusy(false)
     }
   }, [credentials, operator])
 

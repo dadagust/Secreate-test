@@ -29,7 +29,9 @@ public class ExchangeService {
         id = (UUID) row.get("id");
         if (inserted == 1) {
             db.update("insert into outbox(task_id) values (?)", id);
-            event(id, "CREATED", owner);
+            event(id, "CREATED", owner, AuditEvents.details(
+                    "newBusinessStatus", "PENDING", "newResultVersion", 0,
+                    "newDeliveryState", "READY"));
         }
         return get(owner, id);
     }
@@ -40,14 +42,20 @@ public class ExchangeService {
     }
     @Transactional
     public Lease claim() {
-        var expired = db.queryForList("update outbox set state='FAILED',lease_token=null,lease_until=null,recovery_pending=false,failure_reason='LAST_LEASE_EXPIRED' where state='READY' and attempts>=attempt_limit and lease_until<now() returning task_id");
-        for (var row : expired) event((UUID)row.get("task_id"), "LAST_LEASE_EXPIRED", "worker");
+        var expired = db.queryForList("update outbox set state='FAILED',lease_token=null,lease_until=null,recovery_pending=false,failure_reason='LAST_LEASE_EXPIRED' where state='READY' and attempts>=attempt_limit and lease_until<now() returning task_id,attempts");
+        for (var row : expired) event((UUID)row.get("task_id"), "LAST_LEASE_EXPIRED", "worker", AuditEvents.details(
+                "oldDeliveryState", "READY", "newDeliveryState", "FAILED",
+                "attempts", row.get("attempts"), "reason", "LAST_LEASE_EXPIRED"));
         var rows = db.queryForList("select o.*,t.title from outbox o join tasks t on t.id=o.task_id where o.state='READY' and o.attempts<o.attempt_limit and o.next_attempt<=now() and (o.lease_until is null or o.lease_until<now()) order by o.next_attempt for update of o skip locked limit 1");
         if (rows.isEmpty()) return null;
         var r = rows.getFirst(); UUID id=(UUID)r.get("task_id"), token=UUID.randomUUID();
-        int attempts=((Number)r.get("attempts")).intValue()+1;
+        int attemptsBefore=((Number)r.get("attempts")).intValue();
+        int attempts=attemptsBefore+1;
         db.update("update outbox set attempts=?,lease_token=?,lease_until=now()+interval '30 seconds' where task_id=?",attempts,token,id);
-        event(id,"ATTEMPT_"+attempts,"worker");
+        event(id,"ATTEMPT_"+attempts,"worker",AuditEvents.details(
+                "oldDeliveryState", "READY", "newDeliveryState", "READY",
+                "attemptsBefore", attemptsBefore, "attemptsAfter", attempts,
+                "leaseSeconds", 30));
         LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome=CLAIMED",id,attempts);
         return new Lease(id,token,(String)r.get("title"),attempts);
     }
@@ -68,18 +76,34 @@ public class ExchangeService {
         long current = ((Number)row.get("result_version")).longValue();
         String previous = (String)row.get("status");
         var decision = ResultDecision.decide(current, previous, version, status);
+        String newDeliveryState = decision == ResultDecision.CONFLICT ? "REVIEW" : "DONE";
+        String reason = decision == ResultDecision.CONFLICT ? "SAME_VERSION_DIFFERENT_RESULT" : null;
+        var updated = db.queryForList("update outbox set state=?,lease_token=null,lease_until=null,recovery_pending=false,failure_reason=? where task_id=? and state='READY' and lease_token=? and lease_until>clock_timestamp() returning state", newDeliveryState, reason, lease.id(), lease.token());
+        if (updated.isEmpty()) {
+            LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome=EXPIRED_LEASE_IGNORED",lease.id(),lease.attempts());
+            return false;
+        }
         if (decision == ResultDecision.APPLY) db.update("update tasks set result_version=?,status=? where id=?",version,status,lease.id());
         if (decision == ResultDecision.CONFLICT) {
             db.update("insert into result_conflicts(task_id,attempt,current_version,incoming_version,current_status,incoming_status,reason) values (?,?,?,?,?,?,?)", lease.id(), locked.getFirst().get("attempts"), current, version, previous, status, "SAME_VERSION_DIFFERENT_RESULT");
         }
-        db.update("update outbox set state=?,lease_token=null,lease_until=null,recovery_pending=false,failure_reason=? where task_id=?", decision == ResultDecision.CONFLICT ? "REVIEW" : "DONE", decision == ResultDecision.CONFLICT ? "SAME_VERSION_DIFFERENT_RESULT" : null, lease.id());
-        event(lease.id(), "RESULT_" + decision, "executor");
+        event(lease.id(), "RESULT_" + decision, "executor", AuditEvents.details(
+                "oldBusinessStatus", previous,
+                "newBusinessStatus", decision == ResultDecision.APPLY ? status : previous,
+                "oldResultVersion", current,
+                "newResultVersion", decision == ResultDecision.APPLY ? version : current,
+                "incomingBusinessStatus", status,
+                "incomingResultVersion", version,
+                "resultDecision", decision.name(),
+                "oldDeliveryState", locked.getFirst().get("state"),
+                "newDeliveryState", newDeliveryState,
+                "reason", reason));
         LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome=RESULT_{2}",lease.id(),lease.attempts(),decision);
         return true;
     }
     @Transactional
     public boolean rejectContradictoryBatch(Lease lease,long version,String firstStatus,String secondStatus) {
-        var locked=db.queryForList("select attempts from outbox where task_id=? and state='READY' and lease_token=? for update",lease.id(),lease.token());
+        var locked=db.queryForList("select state,attempts from outbox where task_id=? and state='READY' and lease_token=? for update",lease.id(),lease.token());
         if(locked.isEmpty() || !Boolean.TRUE.equals(db.queryForObject("select lease_until>clock_timestamp() from outbox where task_id=?",Boolean.class,lease.id()))) {
             LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome=STALE_LEASE_IGNORED",lease.id(),lease.attempts());
             return false;
@@ -90,28 +114,42 @@ public class ExchangeService {
         if(changed==0) return false;
         db.update("insert into result_conflicts(task_id,attempt,current_version,incoming_version,current_status,incoming_status,reason) values (?,?,?,?,?,?,?)",
                 lease.id(),locked.getFirst().get("attempts"),task.get("result_version"),version,task.get("status"),firstStatus+"/"+secondStatus,reason);
-        event(lease.id(),"RESULT_CONFLICT_REQUIRES_REVIEW","executor");
+        event(lease.id(),"RESULT_CONFLICT_REQUIRES_REVIEW","executor",AuditEvents.details(
+                "oldBusinessStatus", task.get("status"), "newBusinessStatus", task.get("status"),
+                "oldResultVersion", task.get("result_version"), "newResultVersion", task.get("result_version"),
+                "incomingBusinessStatus", firstStatus + "/" + secondStatus, "incomingResultVersion", version,
+                "resultDecision", "CONFLICT", "oldDeliveryState", locked.getFirst().get("state"),
+                "newDeliveryState", "REVIEW", "reason", reason,
+                "attempt", locked.getFirst().get("attempts")));
         LOG.log(System.Logger.Level.WARNING,"exchange operationId={0} attempt={1} outcome={2}",lease.id(),lease.attempts(),reason);
         return true;
     }
     @Transactional
     public void finish(Lease lease, boolean success) {
-        int changed = db.update("update outbox set state=case when ? then 'DONE' when attempts>=attempt_limit then 'FAILED' else 'READY' end,lease_until=null,lease_token=null,recovery_pending=false,next_attempt=now()+(? * interval '1 second') where task_id=? and state='READY' and lease_token=? and lease_until>now()",
+        db.queryForList("select task_id from outbox where task_id=? for update",lease.id());
+        var updated = db.queryForList("update outbox set state=case when ? then 'DONE' when attempts>=attempt_limit then 'FAILED' else 'READY' end,lease_until=null,lease_token=null,recovery_pending=false,next_attempt=clock_timestamp()+(? * interval '1 second') where task_id=? and state='READY' and lease_token=? and lease_until>clock_timestamp() returning state,attempts,attempt_limit",
                 success, Math.min(60,1<<Math.min(lease.attempts(),6)),lease.id(),lease.token());
-        if (changed == 1) {
-            event(lease.id(),success?"DELIVERED":"AMBIGUOUS_RETRY","worker");
+        if (!updated.isEmpty()) {
+            var row = updated.getFirst();
+            event(lease.id(),success?"DELIVERED":"AMBIGUOUS_RETRY","worker",AuditEvents.details(
+                    "oldDeliveryState", "READY", "newDeliveryState", row.get("state"),
+                    "attempts", row.get("attempts"), "attemptLimit", row.get("attempt_limit"),
+                    "reason", success ? null : "TEMPORARY_DELIVERY_FAILURE"));
             LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome={2}",lease.id(),lease.attempts(),success?"DELIVERED":"AMBIGUOUS_RETRY");
         } else LOG.log(System.Logger.Level.INFO,"exchange operationId={0} attempt={1} outcome=STALE_LEASE_IGNORED",lease.id(),lease.attempts());
     }
     @Transactional
     public void reject(Lease lease) {
-        int changed=db.update("update outbox set state='REVIEW',lease_until=null,lease_token=null,recovery_pending=false,failure_reason='INVALID_RESULT' where task_id=? and state='READY' and lease_token=? and lease_until>now()",lease.id(),lease.token());
-        if(changed==1) {
-            event(lease.id(),"INVALID_RESULT_REQUIRES_REVIEW","worker");
+        db.queryForList("select task_id from outbox where task_id=? for update",lease.id());
+        var updated=db.queryForList("update outbox set state='REVIEW',lease_until=null,lease_token=null,recovery_pending=false,failure_reason='INVALID_RESULT' where task_id=? and state='READY' and lease_token=? and lease_until>clock_timestamp() returning attempts",lease.id(),lease.token());
+        if(!updated.isEmpty()) {
+            event(lease.id(),"INVALID_RESULT_REQUIRES_REVIEW","worker",AuditEvents.details(
+                    "oldDeliveryState", "READY", "newDeliveryState", "REVIEW",
+                    "attempt", updated.getFirst().get("attempts"), "reason", "INVALID_RESULT"));
             LOG.log(System.Logger.Level.WARNING,"exchange operationId={0} attempt={1} outcome=INVALID_RESULT_REQUIRES_REVIEW",lease.id(),lease.attempts());
         }
     }
-    private void event(UUID id,String event,String actor) { db.update("insert into exchange_events(task_id,event,actor) values (?,?,?)",id,event,actor); }
+    private void event(UUID id,String event,String actor,Map<String,?> details) { AuditEvents.record(db,id,event,actor,details); }
     public static String hash(String text) {
         try { return HexFormat.of().formatHex(MessageDigest.getInstance("SHA-256").digest(text.getBytes(StandardCharsets.UTF_8))); }
         catch (java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }

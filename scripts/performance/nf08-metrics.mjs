@@ -47,3 +47,7 @@ export function summarizeNf08Metric(metric) {
     errorReasons: metric.errorReasons,
   }
 }
+
+export function summarizeNf08OperationBuckets(buckets) {
+  return Object.fromEntries(Object.entries(buckets).map(([name, metric]) => [name, summarizeNf08Metric(metric)]))
+}
