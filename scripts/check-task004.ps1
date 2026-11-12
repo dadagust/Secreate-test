@@ -333,7 +333,7 @@ try {
     $externalAfterDb = Get-External $postgresInterrupted
     if ($externalAfterDb.executions -ne 1 -or $externalAfterDb.operationId -ne $postgresInterrupted) { throw 'Внешний operationId/count изменился после восстановления PostgreSQL.' }
     $migrationVersion = Invoke-Sql "select max(version) from flyway_schema_history where success"
-    if ([int]$migrationVersion -ne 8) { throw "На чистой БД применена неожиданная версия схемы: $migrationVersion." }
+    if ([int]$migrationVersion -ne 9) { throw "На чистой БД применена неожиданная версия схемы: $migrationVersion." }
     Write-Output "PostgreSQL volume restart: operationId=$postgresInterrupted, tasks=$afterTasks, events=$afterEvents, assignmentAudits=$afterAudits, executions=$($externalAfterDb.executions)"
 
     Stop-JavaProcess $apiProcess; $script:apiProcess = $null
